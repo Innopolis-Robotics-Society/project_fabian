@@ -1,168 +1,151 @@
-# **Проект "TO-DO"**  
+# **Project "TO-DO"**
 
-## 🛠 **Установка и настройка**  
+## 🛠 **Installation and Setup**
 
-### **Необходимые компоненты**  
-- **Docker** ([Инструкция по установке](https://docs.docker.com/engine/install/))  
+### **Required Components**
 
-### **🚀 Быстрый старт с Docker**  
+* **Docker** ([Installation Guide](https://docs.docker.com/engine/install/))
+
+### **🚀 Quick Start with Docker**
 
 ```bash
-git clone git@github.com:Robosoft-MIK-2025/maneuver.git
-cd maneuver
+git clone git@github.com:Innopolis-Robotics-Society/project_fabian.git
+cd project_fabian
 docker compose up --build <TO-DO>
 ```
 
 ---
 
-## 🛠 **Руководство по разработке**  
+## 🛠 **Development Guide**
 
-### **1. Локальная разработка (без Docker)**  
-*TO-DO*  
+### **1. Local Development (without Docker)**
 
-### **2. Разработка в Docker**  
+*TO-DO*
 
-Скачайте репозиторий и перейдидте в его корень
+### **2. Development in Docker**
+
+Clone the repository and go to its root directory:
+
 ```bash
-git clone git@github.com:Robosoft-MIK-2025/maneuver.git
-cd maneuver
+git clone git@github.com:Innopolis-Robotics-Society/project_fabian.git
+cd project_fabian
 ```
 
-Запустите контейнер:  
+Run the container:
+
 ```bash
 docker compose up --build terminal
 ```
 
-Подключитесь к контейнеру из других терминалов:  
+Connect to the container from other terminals:
+
 ```bash
 docker compose exec terminal bash
 ```
 
-### **3. Сборка Docker**  
+### **3. Docker Build**
 
-После внесения изменений в Dockerfile необходимо собрать новый образ и загрузить его в облако (опционально).  
+After making changes to the Dockerfile, you need to build a new image and optionally upload it to the cloud.
 
-Сборка образа:  
+Build the image:
+
 ```bash
 docker build -t image_name -f Dockerfile .
 ```
 
-Тег образа:  
+Tag the image:
+
 ```bash
-docker tag image_name fabook/mik:common
+docker tag image_name fabook/fabian:common
 ```
 
-Загрузка образа в Docker Hub:  
+Push the image to Docker Hub:
+
 ```bash
-docker push fabook/mik:common
+docker push fabook/fabian:common
 ```
 
-> [!IMPORTANT]  
-> Для обеспечения воспроизводимости необходимо поддерживать актуальную версию Docker-образа в Docker Hub.  
-> Однако не обязательно выполнять эту команду при каждой сборке, только когда вы уверены в своих изменениях
+> \[!IMPORTANT]
+> To ensure reproducibility, it is necessary to maintain the Docker image up to date in Docker Hub.
+> However, it is not required to run this command every time — only when you are confident in your changes.
 
-> [!TIP]  
-> Тег может быть любым, но по умолчанию `docker compose` использует тег `latest`.  
+> \[!TIP]
+> The tag can be anything, but by default, `docker compose` uses the `latest` tag.
 
 ---
 
-## **5. Правила работы с Git и коммитами**  
+## **5. Git and Commit Rules**
 
-### 🔹 **Основные теги (типы коммитов)**  
-| Тег         | Описание                                                                 |
-|-------------|--------------------------------------------------------------------------|
-| **feat**    | Новая функциия. Пример: `feat: добавлена аутентификация`        |
-| **fix**     | Исправление ошибки. Пример: `fix: исправлен краш при null-вводе`        |
-| **docs**    | Изменения в документации. Пример: `docs: обновлен README.md`            |
-| **style**   | Изменения форматирования (пробелы, запятые). Пример: `style: форматирование по PEP8` |
-| **refactor**| Рефакторинг кода (без изменения функционала). Пример: `refactor: оптимизация функции X` |
-| **perf**    | Улучшение производительности. Пример: `perf: уменьшено время загрузки` |
-| **test**    | Изменения, связанные с тестами. Пример: `test: добавлено покрытие API` |
-| **chore**   | Технические задачи (зависимости, конфиги). Пример: `chore: обновление webpack` |
-| **ci**      | Изменения CI/CD (GitHub Actions, GitLab CI). Пример: `ci: добавлен деплой на staging` |
-| **build**   | Изменения в системе сборки. Пример: `build: добавлен Dockerfile`       |
-| **revert**  | Отмена предыдущего коммита. Пример: `revert: отмена коммита 123abc`    |
+### 🔹 **Main Tags (Commit Types)**
 
-### 🔹 **Дополнительные правила**  
-1. **Сообщение** должно быть четким и лаконичным.  
-   - ❌ Плохо: `fix: баг`  
-   - ✅ Хорошо: `fix: исправлена ошибка отправки формы`  
+| Tag          | Description                                                                                  |
+| ------------ | -------------------------------------------------------------------------------------------- |
+| **feat**     | New feature. Example: `feat: added authentication`                                           |
+| **fix**      | Bug fix. Example: `fix: fixed crash on null input`                                           |
+| **docs**     | Documentation changes. Example: `docs: updated README.md`                                    |
+| **style**    | Formatting changes (spaces, commas). Example: `style: formatted to PEP8`                     |
+| **refactor** | Code refactoring (without changing functionality). Example: `refactor: optimized function X` |
+| **perf**     | Performance improvement. Example: `perf: reduced load time`                                  |
+| **test**     | Changes related to tests. Example: `test: added API coverage`                                |
+| **chore**    | Technical tasks (dependencies, configs). Example: `chore: updated webpack`                   |
+| **ci**       | CI/CD changes (GitHub Actions, GitLab CI). Example: `ci: added staging deploy`               |
+| **build**    | Build system changes. Example: `build: added Dockerfile`                                     |
+| **revert**   | Revert a previous commit. Example: `revert: reverted commit 123abc`                          |
 
-2. **Тело коммита** (опционально) — подробное описание изменений.  
-   ```  
-   fix: устранена утечка памяти в модуле X  
+### 🔹 **Additional Rules**
 
-   Утечка возникала из-за незакрытых соединений с БД при долгих сессиях.  
-   Добавлен `cleanup()` для корректного освобождения ресурсов.  
-   ```  
+1. **Commit message** should be clear and concise.
 
-3. **Футер** (опционально) — ссылки на задачи, критические изменения.  
-   ```  
-   feat: добавлена поддержка WebSocket  
+   * ❌ Bad: `fix: bug`
+   * ✅ Good: `fix: fixed form submission error`
 
-   BREAKING CHANGE: Устаревший API `/chat` больше не поддерживается.  
+2. **Commit body** (optional) — detailed description of changes.
+
+   ```
+   fix: fixed memory leak in module X  
+
+   The leak occurred due to unclosed DB connections during long sessions.  
+   Added `cleanup()` to properly release resources.  
+   ```
+
+3. **Footer** (optional) — links to issues, breaking changes.
+
+   ```
+   feat: added WebSocket support  
+
+   BREAKING CHANGE: Deprecated `/chat` API is no longer supported.  
    Closes #123  
-   ```  
+   ```
 
 ---
 
-## 📌 **Как загрузить изменения в отдельную ветку**  
+## 📌 **How to Push Changes to a Separate Branch**
 
 ```bash
-# 1. Создать новую ветку  
-git checkout -b <имя_ветки>  
+# 1. Create a new branch  
+git checkout -b <branch_name>  
 ```
 
-# 2. Проверить текущую ветку  
+# 2. Check the current branch
+
 ```bash
 git branch  
 ```
 
-# 3. Добавить изменения  
+# 3. Add changes
+
 ```bash
 git add .  
 ```
 
-# 4. Создать коммит  
+# 4. Create a commit
+
 ```bash
-git commit -m "<тип>: <описание>"  
+git commit -m "<type>: <description>"  
 ```
 
-# 5. Загрузить ветку на GitHub  
+# 5. Push the branch to GitHub
+
 ```bash
-git push -u origin <имя_ветки>  
+git push -u origin <branch_name>  
 ```
-
-### Installing the Docker image with ROS2 and PX4 preinstalled
-An instruction by George
-
-
-
-**WARNING: This is a work in progress. Run for your own peril!**
-
-#### 1. Installing the image
-
-Before installing,
-- Ensure you have [Docker](https://docs.docker.com/engine/install/) installed (`docker -v` should output docker version or show an error if docker is not installed)
-- Ensure you're using the correct git branch: `EgorBranch`. Files in other branches may differ. (The code below uses the correct branch)
-- Use the Ethernet connection, it's 1000MiB capable and is WAY faster than WiFi (in Dorm 5 at least)
-- (optional and potentially dangerous) Run `docker system prune -a -f` remove all user files in docker to ensure that no previous attempts/containers are interfering with the install. **WARNING: THIS WILL ERASE ALL DOCKER CONTAINERS AND FILES YOU HAVE ON YOUR LOCAL MACHINE**
-
-
-Then run:
-```
-git clone -b EgorBranch https://github.com/Robosoft-MIK-2025/maneuver.git
-cd maneuver
-docker compose up terminal
-```
-
-Code explanation:
-- `git clone -b EgorBranch https://github.com/Robosoft-MIK-2025/maneuver.git` downloads latest files from MIK github repo from `EgorBranch` branch
-- `cd maneuver` switch to the `maneuver` folder
-- `docker compose up terminal` runs the container (also downloads all the dependencies on the first run)
-
-#### 2. Starting PX4 sim
-1. Ensure that the docker container is running (a terminal running `docker compose up terminal` is open)
-2. Open two more terminal windows and connect them to the docker container using `docker compose exec terminal bash`
-3. In one terminal, start the agent with settings for connecting to the uXRCE-DDS client running on the simulator: `MicroXRCEAgent udp4 -p 8888`
-4. In the other terminal, start the simulator:  `cd /home/mobile/PX4-Autopilot && make px4_sitl gz_x500`
