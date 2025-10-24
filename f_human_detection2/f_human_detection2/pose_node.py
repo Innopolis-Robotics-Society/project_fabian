@@ -8,7 +8,6 @@ from cv_bridge import CvBridge
 import numpy as np
 import cv2
 
-from .backends import make_backend
 from .postprocess import decode_yolo_pose
 from .tracker import SimpleByteLike
 from .viz.overlay import draw_overlay
@@ -20,7 +19,10 @@ from .utils import resolve_model_path
 
 
 class PoseNode(Node):
+    
     def __init__(self):
+
+        from .backends import make_backend
         super().__init__("f_human_detection2")
         # Parameters (dev defaults to ONNX; prod overrides to TensorRT in prod.yaml)
         self.declare_parameters("", [
