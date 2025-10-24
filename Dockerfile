@@ -1,42 +1,22 @@
-# Use ROS 2 Humble from Docker Hub as the base image
+# Base
 FROM osrf/ros:humble-desktop-full
-# Set non-interactive frontend fodebconf
 ENV DEBIAN_FRONTEND=noninteractive
-
 ENV ROS_DISTRO=humble
 
-# Set arguments for user creation
+# Create user
 ARG USERNAME=mobile
 ARG USER_UID=1000
-ARG USER_GID=$USER_UID
+ARG USER_GID=${USER_UID}
+RUN groupadd --gid ${USER_GID} ${USERNAME} \
+ && useradd --uid ${USER_UID} --gid ${USER_GID} -m ${USERNAME} \
+ && apt-get update \
+ && apt-get install -y sudo curl gnupg2 lsb-release net-tools python3-pip git build-essential \
+ && echo "${USERNAME} ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME} \
+ && chmod 0440 /etc/sudoers.d/${USERNAME}
 
-RUN groupadd --gid $USER_GID $USERNAME \
-    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
-    && apt-get update \
-    && apt-get install -y sudo \
-    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
-    && chmod 0440 /etc/sudoers.d/$USERNAME
-
-
-# Update and install necessary packages
-RUN apt-get update && apt-get upgrade -y \
-    && apt-get install -y sudo curl gnupg2 lsb-release net-tools python3-pip \
-    && curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | apt-key add - \
-    && echo "deb http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" > /etc/apt/sources.list.d/ros2-latest.list
-
-# Install slcan-utils from source if not available
-RUN apt-get install -y git build-essential \
-    && git clone https://github.com/linux-can/can-utils.git \
-    && cd can-utils \
-    && make \
-    && make install
-
-# Обновление и установка базовых пакетов
+# Extra ROS deps and tools
 RUN apt-get update && apt-get upgrade -y && \
     apt-get install -y \
-    sudo \
-    git \
-    python3-pip \
     ros-${ROS_DISTRO}-tf2-tools \
     ros-${ROS_DISTRO}-gazebo-ros \
     ros-${ROS_DISTRO}-robot-state-publisher \
@@ -59,29 +39,31 @@ RUN apt-get update && apt-get upgrade -y && \
     ros-${ROS_DISTRO}-ros2-controllers \
     ros-${ROS_DISTRO}-joint-state-publisher-gui \
     ros-${ROS_DISTRO}-ros-gz \
-    libcanberra-gtk-module \
-    libcanberra-gtk3-module \
-    at-spi2-core \
-    x11-apps \
-    xauth \
+    libcanberra-gtk-module libcanberra-gtk3-module \
+    at-spi2-core x11-apps xauth \
     --fix-missing
 
-# Clean up
+# can-utils (если реально нужно)
+RUN git clone https://github.com/linux-can/can-utils.git /tmp/can-utils \
+ && make -C /tmp/can-utils && make -C /tmp/can-utils install \
+ && rm -rf /tmp/can-utils
+
+# Clean apt cache
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# rosdep init (as root)
+RUN rosdep init || true && rosdep update
 
-# Initialize rosdep (run as user)
-RUN sudo rosdep init || true \
-    && rosdep update
+# ---- switch to user ----
+USER ${USERNAME}
+WORKDIR /home/${USERNAME}
 
-# ==== ПЕРЕКЛЮЧАЕМСЯ НА ПОЛЬЗОВАТЕЛЯ ====
-USER $USERNAME
-WORKDIR /home/$USERNAME
+# ROS environment in shell
+RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /home/${USERNAME}/.bashrc && \
+    echo "[ -f ~/ros2_ws/install/setup.bash ] && source ~/ros2_ws/install/setup.bash" >> /home/${USERNAME}/.bashrc
 
-# Добавляем source в .bashrc
-RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /home/$USERNAME/.bashrc
-RUN echo "source ~/a1_ws/install/setup.bash" >> /home/$USERNAME/.bashrc
+# Pre-create workspace
+RUN mkdir -p /home/${USERNAME}/ros2_ws/src
 
-
+# Default command
 CMD ["bash"]
-
