@@ -1,6 +1,3 @@
-# Minimal TensorRT inference wrapper. Assumes engine outputs person-only detections with kpts.
-# If your export keeps multi-class, filter 'person' in postprocess at decode().
-
 import numpy as np
 try:
     import pycuda.autoinit  # noqa: F401
@@ -19,7 +16,6 @@ class Yolo11PoseTRT:
         self.context = self.engine.create_execution_context()
         self.input_w, self.input_h = input_size
         self.stream = cuda.Stream()
-        # assume single input and three outputs: boxes, scores, kpts
         self.bindings = [None] * self.engine.num_bindings
         self.inputs = []
         self.outputs = []
@@ -40,22 +36,19 @@ class Yolo11PoseTRT:
 
     def preprocess(self, img_bgr):
         img, r, dwdh = letterbox(img_bgr, (self.input_w, self.input_h))
-        img = img[:, :, ::-1]  # BGR->RGB
-        img = img.astype(np.float32) / 255.0
-        img = np.transpose(img, (2,0,1))[None]  # 1x3xHxW
+        img = img[:, :, ::-1].astype(np.float32) / 255.0
+        img = np.transpose(img, (2,0,1))[None]
         return img, r, dwdh
 
     def infer(self, img_bgr):
         inp, r, dwdh = self.preprocess(img_bgr)
-        d_idx, d_mem, d_type, d_shape = self.inputs[0]
+        _, d_mem, d_type, _ = self.inputs[0]
         cuda.memcpy_htod_async(d_mem, inp.astype(d_type).ravel(), self.stream)
         self.context.execute_async_v2(self.bindings, self.stream.handle, None)
-        # copy outputs
-        out_tensors = []
-        for (i, d_mem, h_mem, d_type, shape) in self.outputs:
+        outs = []
+        for (_, d_mem, h_mem, _, shape) in self.outputs:
             cuda.memcpy_dtoh_async(h_mem, d_mem, self.stream)
-            out_tensors.append(np.array(h_mem).reshape(shape))
+            outs.append(np.array(h_mem).reshape(shape))
         self.stream.synchronize()
-        # expected shapes: (N,4), (N,), (N,17,3)
-        boxes, scores, kpts = out_tensors
+        boxes, scores, kpts = outs
         return (boxes.astype(np.float32), scores.astype(np.float32), kpts.astype(np.float32)), r, dwdh

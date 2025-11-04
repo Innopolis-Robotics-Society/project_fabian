@@ -47,7 +47,9 @@ RUN apt-get update && apt-get upgrade -y && \
 RUN git clone https://github.com/linux-can/can-utils.git /tmp/can-utils \
  && make -C /tmp/can-utils && make -C /tmp/can-utils install \
  && rm -rf /tmp/can-utils
-
+ 
+RUN python3 -m pip install --no-cache-dir --upgrade pip \
+ && python3 -m pip install --no-cache-dir onnxruntime==1.18.1
 # Clean apt cache
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
