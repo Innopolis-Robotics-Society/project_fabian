@@ -44,7 +44,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 48;48;48
-    Fixed Frame: camera_link
+    Fixed Frame: camera
     Frame Rate: 30
   Tools:
     - Class: rviz_default_plugins/Interact
@@ -57,6 +57,6 @@ Visualization Manager:
       Distance: 3
       Pitch: 0.5
       Yaw: 0.0
-      Target Frame: camera_link
+      Target Frame: camera
       Name: Orbit
       Near Clip Distance: 0.01

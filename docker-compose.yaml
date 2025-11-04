@@ -1,7 +1,6 @@
 x-common: &common-setup
-  image: fabook/control:iros-0.0.6
+  image: fabook/fox:v0.0.1
   network_mode: host
-  user: "1000:1000"
   privileged: true
   volumes:
     - ${HOME}/.Xauthority:/home/mobile/.Xauthority:rw
@@ -16,12 +15,6 @@ x-common: &common-setup
   ports:
     - "9090:9090"
   working_dir: /home/mobile/ros2_ws
-  # entrypoint: >
-  #   bash -lc "
-  #     source /opt/ros/humble/setup.bash &&
-  #     mkdir -p ~/ros2_ws/src &&
-  #     exec bash
-  #   "
 
 services:
   terminal:

@@ -38,7 +38,7 @@ class PoseNode(Node):
             ("publish_overlay", True),
             ("publish_markers", True),
             ("sync_mode", False),
-            ("camera_frame", "camera_link"),
+            ("camera_frame", "camera"),
         ])
 
         self.bridge = CvBridge()

@@ -12,4 +12,4 @@ f_human_detection2:
     publish_overlay: true
     publish_markers: true
     sync_mode: false
-    camera_frame: "camera_link"
+    camera_frame: "camera"

@@ -41,7 +41,7 @@ def generate_launch_description():
             {"output_encoding": "rgb8"},    # matches your pipeline
             # {'camera_info_url': f'file://{calibration}'},
             # config_path
-            {"frame_id" : "camera_link"}
+            {"frame_id" : "camera"}
             ],
 	    output='screen'
     )
@@ -60,7 +60,6 @@ def generate_launch_description():
     executable="rviz2",
     arguments=["-d", rviz_cfg],
     output="screen",
-    env={"LIBGL_ALWAYS_SOFTWARE":"1","QT_XCB_GL_INTEGRATION":"software"},
     )
 
     
