@@ -8,13 +8,15 @@ from f_interfaces.msg import PersonBody, PersonBodyArray, PersonAction
 
 import os
 import onnxruntime as ort
+import json
+import numpy as np
 
 from .process_utils import (
     preprocess_input,
     postprocess_output
 )
 
-class PoseClassifier(Node) :
+class PoseClassifier(Node):
     def __init__(self):
         super().__init__('pose_classifier')
 
@@ -39,6 +41,7 @@ class PoseClassifier(Node) :
         # TODO: Interfaces
 
         self.session = self.load_model(model_path)
+        self.action_descriptions = json.loads(self.session.get_modelmeta().custom_metadata_map["action_descriptions"])
         # TODO: Check/chose .onnx or .engine model and handle appropriatly
 
         self.get_logger().info("Pose Classifier initialized")
@@ -51,11 +54,11 @@ class PoseClassifier(Node) :
 
             self.get_logger().info(f'Loaded ONNX model: {model_path}')
 
-            for i, input_info in enumerate(self.session.get_inputs()):
+            for i, input_info in enumerate(session.get_inputs()):
                 self.get_logger().debug(f"Input {i}: name='{input_info.name}', shape={input_info.shape}, type={input_info.type}")
-            for i, output_info in enumerate(self.session.get_outputs()):
+            for i, output_info in enumerate(session.get_outputs()):
                 self.get_logger().debug(f"Output {i}: name='{output_info.name}', shape={output_info.shape}, type={output_info.type}")
-            
+
             return session
         except Exception as e:
             self.get_logger().error(f'Failed to load ONNX model: {e}')
@@ -67,23 +70,31 @@ class PoseClassifier(Node) :
             self.get_logger().warning('ONNX session not available')
             return
 
-        inputs = preprocess_input(msg.persons)
+        inputs = self.preprocess_input(msg.persons)
 
-        outputs = self.session.run(None, inputs)
+        outputs = self.session.run(None, {"input": inputs})
 
         # Get info from outputs dictionary
-        label, confidence = postprocess_output(outputs)
+        label, confidence = self.postprocess_output(outputs)
 
         # Create message
         action = PersonAction()
         action.header = Header()
         action.header.stamp = self.get_clock().now().to_msg()
-        action.header.frame_id = "base_link"    # Not sure
+        action.header.frame_id = ""
         action.label = label
         action.confidence = confidence
 
         self.pub_actions.publish(action)
         self.get_logger().info(f"Published action: {label} ({confidence:.2f})")
+
+    def preprocess_input(self, persons):
+        return np.array([persons[0].keypoints])
+
+    def postprocess_output(self, outputs):
+        label = self.action_descriptions[outputs[0][0]]
+        confidence = outputs[1][0][outputs[0][0]]
+        return label, confidence
 
 def main(args=None):
     rclpy.init(args=args)
