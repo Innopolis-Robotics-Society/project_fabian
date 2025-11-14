@@ -18,6 +18,9 @@ class PoseClassifier(Node):
 
         self.input_name = None
 
+        self.img_height = 1080
+        self.img_width = 1920
+
         self.declare_parameter('model', 'stgcn_ntu60_metadata.onnx')
         self.declare_parameter('num_frames', 10)
         # TODO: TensorRT params
@@ -84,7 +87,6 @@ class PoseClassifier(Node):
 
         outputs = self.session.run(None, {self.input_name: inputs})
 
-        # Get info from outputs dictionary
         label, confidence = self.postprocess_output(outputs)
 
         self.publish_detection(label, confidence)
@@ -99,9 +101,14 @@ class PoseClassifier(Node):
             keypoints = np.zeros((17, 3), dtype=np.float32)
         else:
             p = persons_msg[0]      # Just take the first person for now
-
             # p.keypoints = [x1, y1, score1, ..., x17, y17, score17]
-            keypoints = np.array(p.keypoints, dtype=np.float32).reshape(17, 3)
+
+            # PreNormalize2D (from MMAction2) normalization
+            keypoints = np.array(p.keypoints, dtype=np.float32).reshape(17, 2)
+            keypoints[:, 0] = (keypoints[:, 0] - self.img_width / 2) / (self.img_width / 2)
+            keypoints[:, 1] = (keypoints[:, 1] - self.img_height / 2) / (self.img_height / 2)
+
+            keypoints = np.hstack([keypoints, np.ones((17,1), dtype=np.float32)])
 
         self.buffer.append(keypoints)
 
@@ -117,8 +124,8 @@ class PoseClassifier(Node):
     def postprocess_output(self, outputs):
         pred_class = np.argmax(outputs[0][0])
 
-        label = self.action_descriptions[pred_class]
-        confidence = outputs[0][0][pred_class]
+        label = self.action_descriptions[f"A{int(pred_class)+1}"]
+        confidence = float(outputs[0][0][pred_class])
 
         return label, confidence
     

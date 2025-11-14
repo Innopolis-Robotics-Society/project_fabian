@@ -41,7 +41,7 @@ fi
 echo "[5/6] Build"
 cd "$WS"
 rm -rf build/ install/ log/
-colcon build --symlink-install --packages-select f_human_detection_msgs f_human_detection2
+colcon build --symlink-install --packages-select f_interfaces f_human_detection2
 
 echo "[6/6] Sanity"
 set +u; source install/setup.bash; set -u

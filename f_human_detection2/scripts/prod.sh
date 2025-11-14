@@ -54,7 +54,7 @@ echo "[6/8] Verify engine"
 echo "[7/8] Build workspace"
 cd "$WS"
 rm -rf build/ install/ log/
-colcon build --symlink-install --packages-select f_human_detection_msgs f_human_detection2
+colcon build --symlink-install --packages-select f_interfaces f_human_detection2
 
 echo "[8/8] Sanity"
 set +u; source install/setup.bash; set -u
