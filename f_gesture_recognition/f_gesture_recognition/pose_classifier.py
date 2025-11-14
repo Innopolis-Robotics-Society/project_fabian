@@ -10,21 +10,23 @@ import os
 import onnxruntime as ort
 import json
 import numpy as np
-
-from .process_utils import (
-    preprocess_input,
-    postprocess_output
-)
+from collections import deque
 
 class PoseClassifier(Node):
     def __init__(self):
         super().__init__('pose_classifier')
 
-        self.declare_parameter('model', 'model.onnx')
+        self.input_name = None
+
+        self.declare_parameter('model', 'stgcn_ntu60_metadata.onnx')
+        self.declare_parameter('num_frames', 10)
         # TODO: TensorRT params
 
         # Get model name (model.onnx by default)
         model_name = self.get_parameter('model').get_parameter_value().string_value
+
+        self.num_frames = self.get_parameter('num_frames').get_parameter_value().integer_value
+        self.buffer = deque(maxlen=self.num_frames)
 
         # Path to model
         pkg_share = get_package_share_directory('f_gesture_recognition')
@@ -40,9 +42,9 @@ class PoseClassifier(Node):
 
         # TODO: Interfaces
 
+        # TODO: Check/chose .onnx or .engine model and handle appropriatly
         self.session = self.load_model(model_path)
         self.action_descriptions = json.loads(self.session.get_modelmeta().custom_metadata_map["action_descriptions"])
-        # TODO: Check/chose .onnx or .engine model and handle appropriatly
 
         self.get_logger().info("Pose Classifier initialized")
 
@@ -56,10 +58,14 @@ class PoseClassifier(Node):
 
             for i, input_info in enumerate(session.get_inputs()):
                 self.get_logger().debug(f"Input {i}: name='{input_info.name}', shape={input_info.shape}, type={input_info.type}")
+
+                if i == 0:
+                    self.input_name = input_info.name
             for i, output_info in enumerate(session.get_outputs()):
                 self.get_logger().debug(f"Output {i}: name='{output_info.name}', shape={output_info.shape}, type={output_info.type}")
 
             return session
+        
         except Exception as e:
             self.get_logger().error(f'Failed to load ONNX model: {e}')
             return None
@@ -72,11 +78,51 @@ class PoseClassifier(Node):
 
         inputs = self.preprocess_input(msg.persons)
 
-        outputs = self.session.run(None, {"input": inputs})
+        if inputs is None:
+            self.get_logger().debug("Waiting for buffer to fill...")
+            return
+
+        outputs = self.session.run(None, {self.input_name: inputs})
 
         # Get info from outputs dictionary
         label, confidence = self.postprocess_output(outputs)
 
+        self.publish_detection(label, confidence)
+
+    def preprocess_input(self, persons_msg):
+        """
+        persons_msg: list[PersonBody]
+        Return shape: [1, 1, T, 17, 3]
+        """
+        
+        if len(persons_msg) == 0:
+            keypoints = np.zeros((17, 3), dtype=np.float32)
+        else:
+            p = persons_msg[0]      # Just take the first person for now
+
+            # p.keypoints = [x1, y1, score1, ..., x17, y17, score17]
+            keypoints = np.array(p.keypoints, dtype=np.float32).reshape(17, 3)
+
+        self.buffer.append(keypoints)
+
+        if len(self.buffer) < self.num_frames:
+            return None
+
+        frames = np.stack(list(self.buffer), axis=0)     # [T, 17, 3]
+
+        inputs = frames[np.newaxis, np.newaxis, ...]     # [1,1,T,17,3]
+
+        return inputs.astype(np.float32)
+    
+    def postprocess_output(self, outputs):
+        pred_class = np.argmax(outputs[0][0])
+
+        label = self.action_descriptions[pred_class]
+        confidence = outputs[0][0][pred_class]
+
+        return label, confidence
+    
+    def publish_detection(self, label, confidence):
         # Create message
         action = PersonAction()
         action.header = Header()
@@ -87,14 +133,6 @@ class PoseClassifier(Node):
 
         self.pub_actions.publish(action)
         self.get_logger().info(f"Published action: {label} ({confidence:.2f})")
-
-    def preprocess_input(self, persons):
-        return np.array([persons[0].keypoints])
-
-    def postprocess_output(self, outputs):
-        label = self.action_descriptions[outputs[0][0]]
-        confidence = outputs[1][0][outputs[0][0]]
-        return label, confidence
 
 def main(args=None):
     rclpy.init(args=args)
