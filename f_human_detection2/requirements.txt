@@ -1,0 +1,7 @@
+opencv-python-headless
+numpy
+pycuda
+tensorrt
+onnxruntime-gpu
+cv_bridge
+onnxruntime==1.18.1

@@ -1,32 +1,37 @@
 x-common: &common-setup
-  image: fabook/control:iros-0.0.5
+  image: fabook/fox:v0.0.1
   network_mode: host
   privileged: true
-  volumes: 
+  volumes:
     - ${HOME}/.Xauthority:/home/mobile/.Xauthority:rw
-    - .:/root/ros2_ws/src:rw
+    - .:/home/mobile/ros2_ws/src:rw
     - /tmp/.X11-unix:/tmp/.X11-unix:rw
     - /dev/dri:/dev/dri:rw
-
   environment:
-    - "DISPLAY"
-    - "QT_X11_NO_MITSHM=1"
+    - DISPLAY
+    - QT_X11_NO_MITSHM=1
+    - LIBGL_ALWAYS_SOFTWARE=1
+    - QT_XCB_GL_INTEGRATION=software
   ports:
     - "9090:9090"
-  entrypoint: >
-    bash -c "
-    source /opt/ros/humble/setup.bash && /bin/bash
-    "
+  working_dir: /home/mobile/ros2_ws
 
 services:
-  camera:
-      build: ./rlr_camera
-      devices:
-        - "/dev/video0:/dev/video0"
-      privileged: true
   terminal:
     <<: *common-setup
-    stdin_open: true  # docker run -i
-    tty: true        # docker run -t
-    working_dir: /root/ros2_ws
-    command: []
+    stdin_open: true
+    tty: true
+    devices:
+      - "/dev/video0:/dev/video0"
+      - /dev/video1:/dev/video1
+      - "/dev/dri:/dev/dri"
+    group_add:
+      - "video"
+      - "44"
+    command: [
+      "/bin/bash","-lc","
+      sudo chmod 666 /dev/ttyUSB* 2>/dev/null || true &&
+      sudo chmod 666 /dev/spidev* 2>/dev/null || true &&
+      sudo chmod 666 /dev/ttyACM* 2>/dev/null || true;
+      exec bash"
+      ]

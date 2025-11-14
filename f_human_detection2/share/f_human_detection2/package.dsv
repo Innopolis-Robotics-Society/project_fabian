@@ -1,0 +1,6 @@
+source;share/f_human_detection2/hook/pythonpath.ps1
+source;share/f_human_detection2/hook/pythonpath.dsv
+source;share/f_human_detection2/hook/pythonpath.sh
+source;share/f_human_detection2/hook/ament_prefix_path.ps1
+source;share/f_human_detection2/hook/ament_prefix_path.dsv
+source;share/f_human_detection2/hook/ament_prefix_path.sh
