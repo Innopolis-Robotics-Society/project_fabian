@@ -1,6 +1,25 @@
 import numpy as np
 from collections import deque
 
+
+def iou_xywh(box, boxes):
+    """
+    Compute IoU between one box (x,y,w,h) and an array of boxes (N,4) in xywh.
+    Returns array of shape (N,).
+    """
+    x, y, w, h = box
+    xx, yy, ww, hh = boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]
+
+    x1 = np.maximum(x, xx)
+    y1 = np.maximum(y, yy)
+    x2 = np.minimum(x + w, xx + ww)
+    y2 = np.minimum(y + h, yy + hh)
+
+    inter = np.maximum(0, x2 - x1) * np.maximum(0, y2 - y1)
+    union = w * h + ww * hh - inter + 1e-9
+
+    return inter / union
+    
 class SimpleByteLike:
     """
     Minimalistic tracker.
@@ -14,6 +33,12 @@ class SimpleByteLike:
         self.next_id = 1
         self.max_age = max_age
         self.iou_th = iou_th
+
+    def reset(self):
+        """Drop all tracks and restart IDs from 1."""
+        self.tracks.clear()
+        self.history.clear()
+        self.next_id = 1
 
     def update(self, boxes):
         assigned = set()
@@ -49,12 +74,3 @@ class SimpleByteLike:
 
         self.tracks = new_tracks
         return result_ids
-
-def iou_xywh(box, boxes):
-    x,y,w,h = box
-    xx,yy,ww,hh = boxes[:,0], boxes[:,1], boxes[:,2], boxes[:,3]
-    x1 = np.maximum(x, xx); y1 = np.maximum(y, yy)
-    x2 = np.minimum(x+w, xx+ww); y2 = np.minimum(y+h, yy+hh)
-    inter = np.maximum(0, x2-x1) * np.maximum(0, y2-y1)
-    union = w*h + ww*hh - inter + 1e-9
-    return inter/union

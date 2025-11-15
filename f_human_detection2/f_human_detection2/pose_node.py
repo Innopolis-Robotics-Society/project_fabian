@@ -1,5 +1,6 @@
 import sys
 import rclpy
+import time 
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from std_srvs.srv import Trigger
@@ -97,7 +98,7 @@ class PoseNode(Node):
         return resp
 
     def on_image(self, msg: Image):
-        _ = self.prof.tick()
+        t_start = time.time()
 
         cv_img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         (boxes, scores, kpts), r, dwdh = self.backend.infer(cv_img)
@@ -111,24 +112,61 @@ class PoseNode(Node):
             ratio=r, dwdh=dwdh
         )
 
-        ids = self.tracker.update(boxes) if len(boxes) else []
+        # --- NEW: handle "nobody around" ---
+        if len(boxes) == 0:
+            # reset tracker state and IDs
+            self.tracker.reset()
 
-        # Persons
+            # publish empty PersonBodyArray for this frame
+            arr = PersonBodyArray()
+            arr.header = msg.header
+            arr.persons = []
+            self.pub_persons.publish(arr)
+
+            # overlay: optional; you can skip or send plain image
+            if bool(self.get_parameter("publish_overlay").value) and self.pub_overlay.get_subscription_count() > 0:
+                try:
+                    # empty overlay (just original frame or however draw_overlay handles empty boxes)
+                    overlay = draw_overlay(cv_img, boxes, kpts, [])
+                    self.pub_overlay.publish(self.bridge.cv2_to_imgmsg(overlay, encoding="bgr8"))
+                except Exception as e:
+                    self.get_logger().warn(f"overlay error: {e}")
+
+            # markers: optional; typically nothing if no kpts
+            if bool(self.get_parameter("publish_markers").value) and self.pub_markers.get_subscription_count() > 0:
+                try:
+                    # make_markers should handle empty kpts/ids
+                    ma = make_markers(msg.header, kpts, [])
+                    self.pub_markers.publish(MarkerArray(markers=ma.markers) if hasattr(ma, "markers") else ma)
+                except Exception as e:
+                    self.get_logger().warn(f"markers error: {e}")
+
+            # diagnostics
+            latency_ms = (time.time() - t_start) * 1000.0
+            frame_dt = self.prof.tick()
+            diag = build_diag("f_human_detection2", self.prof.fps, latency_ms)
+            self.pub_diag.publish(diag)
+
+            if self.sync_mode:
+                rclpy.spin_once(self, timeout_sec=0.0)
+            return
+        # --- END "nobody around" branch ---
+
+        # Normal path: we have at least one detection
+        ids = self.tracker.update(boxes)
+
         arr = PersonBodyArray()
         arr.header = msg.header
         persons = []
         for i in range(len(boxes)):
             pb = PersonBody()
             pb.header = msg.header
-            pb.id = int(ids[i])
+            pb.id = int(ids[i])             # tracker ID (persistent while people are in view)
             pb.score = float(scores[i])
 
-            # after: x,y,score for each keypoint
             pb.keypoints = kpts[i].reshape(-1).astype(float).tolist()
+            pb.bbox = [float(x) for x in boxes[i].tolist()]
 
-            pb.bbox = [float(x) for x in boxes[i].tolist()]  # xywh in pixels
-
-            # Optional fields in some schema variants
             if hasattr(pb, "keypoint_scores"):
                 pb.keypoint_scores = [float(kpts[i, j, 2]) for j in range(17)]
             if hasattr(pb, "source"):
@@ -138,7 +176,7 @@ class PoseNode(Node):
         arr.persons = persons
         self.pub_persons.publish(arr)
 
-        # Overlay
+        # overlay, markers, diagnostics as before...
         if bool(self.get_parameter("publish_overlay").value) and self.pub_overlay.get_subscription_count() > 0:
             try:
                 overlay = draw_overlay(cv_img, boxes, kpts, ids)
@@ -146,7 +184,6 @@ class PoseNode(Node):
             except Exception as e:
                 self.get_logger().warn(f"overlay error: {e}")
 
-        # Markers
         if bool(self.get_parameter("publish_markers").value) and self.pub_markers.get_subscription_count() > 0:
             try:
                 ma = make_markers(msg.header, kpts, ids)
@@ -154,13 +191,14 @@ class PoseNode(Node):
             except Exception as e:
                 self.get_logger().warn(f"markers error: {e}")
 
-        # Diagnostics
-        dt = self.prof.tick()
-        diag = build_diag("f_human_detection2", self.prof.fps, dt * 1000.0)
+        latency_ms = (time.time() - t_start) * 1000.0
+        frame_dt = self.prof.tick()
+        diag = build_diag("f_human_detection2", self.prof.fps, latency_ms)
         self.pub_diag.publish(diag)
 
         if self.sync_mode:
             rclpy.spin_once(self, timeout_sec=0.0)
+
 
 
 def main():
