@@ -22,7 +22,7 @@ class PoseClassifier(Node):
         self.img_width = 1920
 
         self.declare_parameter('model', 'stgcn_ntu60_metadata.onnx')
-        self.declare_parameter('num_frames', 10)
+        self.declare_parameter('num_frames', 60)
         # TODO: TensorRT params
 
         # Get model name (model.onnx by default)
@@ -97,6 +97,8 @@ class PoseClassifier(Node):
         Return shape: [1, 1, T, 17, 3]
         """
         
+        while len(self.buffer) < self.num_frames:
+            self.buffer.append(np.zeros((17, 3), dtype=np.float32))
         if len(persons_msg) == 0:
             keypoints = np.zeros((17, 3), dtype=np.float32)
         else:
