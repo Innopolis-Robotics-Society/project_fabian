@@ -174,6 +174,10 @@ class PoseNode(Node):
 
             persons.append(pb)
         arr.persons = persons
+
+        self.get_logger().info(
+            f"PersonBodyArray: publishing {len(arr.persons)} persons, ids={ids}"
+        )
         self.pub_persons.publish(arr)
 
         # overlay, markers, diagnostics as before...
