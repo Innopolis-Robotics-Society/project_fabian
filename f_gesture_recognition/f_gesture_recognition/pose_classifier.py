@@ -16,19 +16,24 @@ class PoseClassifier(Node):
     def __init__(self):
         super().__init__('pose_classifier')
 
+        # Name of the input tensor for onnx
         self.input_name = None
 
+        # Resolution for normalization
+        # Set as in MMAction2 pretrained model's val preprocessing
+        # TODO: understand whether we need to change resolution to the same as the camera
         self.img_height = 1080
         self.img_width = 1920
 
+        # Change parameters without rebuilding pkg -> ros2 run f_gesture_recognition pose_classifier --ros-args -p num_frames:=100
         self.declare_parameter('model', 'stgcn_ntu60_metadata.onnx')
-        self.declare_parameter('num_frames', 60)
-        # TODO: TensorRT params
+        self.declare_parameter('num_frames', 60)                        # Num of frames for single input to the model
 
-        # Get model name (model.onnx by default)
+        # Read parameters
         model_name = self.get_parameter('model').get_parameter_value().string_value
-
         self.num_frames = self.get_parameter('num_frames').get_parameter_value().integer_value
+        
+        # Buffer storing last N frames of keypoints
         self.buffer = deque(maxlen=self.num_frames)
 
         # Path to model
@@ -40,31 +45,41 @@ class PoseClassifier(Node):
         # Subscribe to keypoints
         self.sub_keypoints = self.create_subscription(PersonBodyArray, "/f_human_detection2/persons", self.keypoints_cb, 10)
 
-        # Publish detections
+        # Publisher for recognized actions/gestures
         self.pub_actions = self.create_publisher(PersonAction, "/f_gesture_recognition/actions", 10)
 
         # TODO: Interfaces
 
-        # TODO: Check/chose .onnx or .engine model and handle appropriatly
+        # Load ONNX model session
         self.session = self.load_model(model_path)
+        
+        # Load action descriptions metadata (dictionary mapping class IDs → labels)
         self.action_descriptions = json.loads(self.session.get_modelmeta().custom_metadata_map["action_descriptions"])
 
         self.get_logger().info("Pose Classifier initialized")
 
     def load_model(self, model_path):
-        # Load onnx model
-        providers = ['CUDAExecutionProvider']
+        """
+        Load an ONNX model with CUDA if available, else CPU fallback.
+        Logs model inputs and outputs for debugging.
+        """
+
+        providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         try:
             session = ort.InferenceSession(model_path, providers=providers)
 
             self.get_logger().info(f'Loaded ONNX model: {model_path}')
             self.get_logger().info(f'Used provider: {session.get_providers()}')
 
+            # Inspect and log model inputs names and types
             for i, input_info in enumerate(session.get_inputs()):
                 self.get_logger().debug(f"Input {i}: name='{input_info.name}', shape={input_info.shape}, type={input_info.type}")
 
+                # Save the first input's name for feeding inference
                 if i == 0:
                     self.input_name = input_info.name
+
+            # Inspect and log model outputs names and types
             for i, output_info in enumerate(session.get_outputs()):
                 self.get_logger().debug(f"Output {i}: name='{output_info.name}', shape={output_info.shape}, type={output_info.type}")
 
@@ -75,65 +90,96 @@ class PoseClassifier(Node):
             return None
 
     def keypoints_cb(self, msg):
+        """
+        Callback executed when a new set of person keypoints is received.
+        Preprocess input, run inference, postprocess output and publish results.
+        """
 
         if self.session is None:
             self.get_logger().warning('ONNX session not available')
             return
 
+        # Convert incoming keypoints into proper input shape
         inputs = self.preprocess_input(msg.persons)
 
+        # Wait until buffer accumulates enough frames
         if inputs is None:
             self.get_logger().debug("Waiting for buffer to fill...")
             return
 
+        # Run inference through ONNX session
         outputs = self.session.run(None, {self.input_name: inputs})
 
+        # Decode model prediction
         label, confidence = self.postprocess_output(outputs)
 
+        # Publish recognized action
         self.publish_detection(label, confidence)
 
     def preprocess_input(self, persons_msg):
         """
+        Converts incoming PersonBody messages into normalized keypoint tensors.
+
         persons_msg: list[PersonBody]
-        Return shape: [1, 1, T, 17, 3]
+        Returns tensor of shape: [1, 1, T, 17, 3]
         """
         
+        # Fill buffer with zero-frames until enough context exists
+        # needed for first initialization
         while len(self.buffer) < self.num_frames:
             self.buffer.append(np.zeros((17, 3), dtype=np.float32))
+
+        # TODO: Expand the buffer up to 200 frames and find a way to fill it
+
+        # If no persons detected → use zeros
         if len(persons_msg) == 0:
             keypoints = np.zeros((17, 3), dtype=np.float32)
         else:
-            p = persons_msg[0]      # Just take the first person for now
-            # p.keypoints = [x1, y1, score1, ..., x17, y17, score17]
+            # Currently only the first detected person is used
+            # TODO: understand which person to choose or scan all persons
+            p = persons_msg[0]
 
-            # PreNormalize2D (from MMAction2) normalization
+            # Keypoints array shape is [17, 3]
             keypoints = np.array(p.keypoints, dtype=np.float32).reshape(17, 3)
+
+            # Normalize keypoints to [-1, 1] range relative to image center
             keypoints[:, 0] = (keypoints[:, 0] - self.img_width / 2) / (self.img_width / 2)
             keypoints[:, 1] = (keypoints[:, 1] - self.img_height / 2) / (self.img_height / 2)
 
-            # keypoints = np.hstack([keypoints, np.ones((17,1), dtype=np.float32)])
-
+        # Add new frame to buffer
         self.buffer.append(keypoints)
 
+        # Not enough frames → delay inference
         if len(self.buffer) < self.num_frames:
             return None
 
-        frames = np.stack(list(self.buffer), axis=0)     # [T, 17, 3]
+        # Stack frames into one tensor: [T, 17, 3]
+        frames = np.stack(list(self.buffer), axis=0)
 
-        inputs = frames[np.newaxis, np.newaxis, ...]     # [1,1,T,17,3]
+        # Expand dims to match ST-GCN model input: [1, 1, T, 17, 3]
+        inputs = frames[np.newaxis, np.newaxis, ...]
 
         return inputs.astype(np.float32)
     
     def postprocess_output(self, outputs):
+        """
+        Interprets model outputs and extracts the most probable class label.
+        """
+        # Determine predicted class index
         pred_class = np.argmax(outputs[0][0])
 
+        # Convert class index into human-readable label
         label = self.action_descriptions[f"A{int(pred_class)+1}"]
+
+        # Extract model confidence score
         confidence = float(outputs[0][0][pred_class])
 
         return label, confidence
     
     def publish_detection(self, label, confidence):
-        # Create message
+        """
+        Publishes the recognized action as a PersonAction message.
+        """
         action = PersonAction()
         action.header = Header()
         action.header.stamp = self.get_clock().now().to_msg()
@@ -144,6 +190,7 @@ class PoseClassifier(Node):
         self.pub_actions.publish(action)
         self.get_logger().info(f"Published action: {label} ({confidence:.2f})")
 
+# Standart node lifecycle
 def main(args=None):
     rclpy.init(args=args)
     node = PoseClassifier()
@@ -157,7 +204,3 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()  
-
-
-
-
