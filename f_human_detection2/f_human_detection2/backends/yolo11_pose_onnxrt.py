@@ -28,3 +28,26 @@ class Yolo11PoseONNXRT:
         else:
             boxes, scores, kpts = outs
         return (boxes.astype(np.float32), scores.astype(np.float32), kpts.astype(np.float32)), r, dwdh
+    def get_chosen_provider(self):
+        """
+        Retrieve the preferred execution provider from ONNX Runtime.
+
+        Returns:
+            str: The name of the chosen provider.
+        """
+        aps = ort.get_available_providers()
+        print(f"Available providers: {aps}")
+
+        prefer = ["CUDAExecutionProvider", "AzureExecutionProvider", "CPUExecutionProvider"]
+        chosen_provider = None
+
+        for provider in prefer:
+            if provider in aps:
+                chosen_provider = provider
+                print(f"Chosen provider: {chosen_provider}")
+                break
+        else:
+            print("No preferred providers found, defaulting to 'CPUExecutionProvider'.")
+            chosen_provider = "CPUExecutionProvider"
+
+        return chosen_provider

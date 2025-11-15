@@ -34,7 +34,7 @@ services:
       "/bin/bash","-lc","
       sudo chmod 666 /dev/ttyUSB* 2>/dev/null || true &&
       sudo chmod 666 /dev/spidev* 2>/dev/null || true &&
-      sudo chmod 666 /dev/ttyACM* 2>/dev/null || true;
+      sudo chmod 666 /dev/ttyACM* 2>/dev/null || true &&
       exec bash"
       ]
   terminal:
@@ -55,3 +55,6 @@ services:
       sudo chmod 666 /dev/ttyACM* 2>/dev/null || true;
       exec bash"
       ]
+  
+
+# sudo -H python3 -m pip install --no-cache-dir "packaging==24.2"

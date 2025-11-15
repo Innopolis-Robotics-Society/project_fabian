@@ -53,11 +53,12 @@ class PoseClassifier(Node):
 
     def load_model(self, model_path):
         # Load onnx model
-        providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        providers = ['CUDAExecutionProvider']
         try:
             session = ort.InferenceSession(model_path, providers=providers)
 
             self.get_logger().info(f'Loaded ONNX model: {model_path}')
+            self.get_logger().info(f'Used provider: {session.get_providers()}')
 
             for i, input_info in enumerate(session.get_inputs()):
                 self.get_logger().debug(f"Input {i}: name='{input_info.name}', shape={input_info.shape}, type={input_info.type}")
@@ -106,11 +107,11 @@ class PoseClassifier(Node):
             # p.keypoints = [x1, y1, score1, ..., x17, y17, score17]
 
             # PreNormalize2D (from MMAction2) normalization
-            keypoints = np.array(p.keypoints, dtype=np.float32).reshape(17, 2)
+            keypoints = np.array(p.keypoints, dtype=np.float32).reshape(17, 3)
             keypoints[:, 0] = (keypoints[:, 0] - self.img_width / 2) / (self.img_width / 2)
             keypoints[:, 1] = (keypoints[:, 1] - self.img_height / 2) / (self.img_height / 2)
 
-            keypoints = np.hstack([keypoints, np.ones((17,1), dtype=np.float32)])
+            # keypoints = np.hstack([keypoints, np.ones((17,1), dtype=np.float32)])
 
         self.buffer.append(keypoints)
 

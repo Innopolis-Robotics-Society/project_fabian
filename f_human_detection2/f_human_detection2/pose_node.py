@@ -8,6 +8,7 @@ from visualization_msgs.msg import MarkerArray
 from cv_bridge import CvBridge
 import numpy as np
 import cv2
+import onnxruntime as ort
 
 from .backends import make_backend
 from .postprocess import decode_yolo_pose
@@ -52,7 +53,10 @@ class PoseNode(Node):
 
         # Backend with safe fallback to ONNX
         try:
+            aps = ort.get_available_providers()
+            self.get_logger().warn(f"{aps} - available providers")
             self.backend = make_backend(self.backend_kind, eng, onnx, (iw, ih))
+            self.get_logger().warn(f"{self.backend.get_chosen_provider()} -- chosen provider")
         except ImportError as e:
             self.get_logger().warn(f"{e}. Falling back to ONNXRuntime.")
             self.backend_kind = "onnxrt"
@@ -119,8 +123,8 @@ class PoseNode(Node):
             pb.id = int(ids[i])
             pb.score = float(scores[i])
 
-            # PersonBody.keypoints is sequence<float>: [x0,y0, x1,y1, ..., x16,y16]
-            pb.keypoints = kpts[i, :, :2].reshape(-1).astype(float).tolist()
+            # after: x,y,score for each keypoint
+            pb.keypoints = kpts[i].reshape(-1).astype(float).tolist()
 
             pb.bbox = [float(x) for x in boxes[i].tolist()]  # xywh in pixels
 
