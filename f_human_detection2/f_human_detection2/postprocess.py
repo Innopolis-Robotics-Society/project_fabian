@@ -28,9 +28,21 @@ def decode_yolo_pose(outputs, conf_thr=0.25, iou_thr=0.45, max_persons=20, orig_
     if orig_size is not None:
         w, h = orig_size
         kpts = scale_coords_kpts(kpts, ratio, dwdh, w, h)
-        # map boxes back
-        bx = boxes.copy()
-        bx[:,0] = (bx[:,0] - dwdh[0]) / ratio
-        bx[:,1] = (bx[:,1] - dwdh[1]) / ratio
+
+        # map boxes back from letterbox to original image
+        bx = boxes.copy().astype(np.float32)
+
+        # 1) undo letterbox: scale all 4 coords
+        # boxes are (cx, cy, w, h) in letterbox space
+        bx[:, 0] = (bx[:, 0] - dwdh[0]) / ratio  # cx
+        bx[:, 1] = (bx[:, 1] - dwdh[1]) / ratio  # cy
+        bx[:, 2] = bx[:, 2] / ratio              # w
+        bx[:, 3] = bx[:, 3] / ratio              # h
+
+        # 2) convert center (cx,cy,w,h) -> top-left (x,y,w,h)
+        bx[:, 0] = bx[:, 0] - bx[:, 2] / 2.0     # x_tl
+        bx[:, 1] = bx[:, 1] - bx[:, 3] / 2.0     # y_tl
+
         boxes = bx
+
     return boxes, scores, kpts
