@@ -1,30 +1,50 @@
 x-common: &common-setup
-  image: fabook/fox:v0.0.1
   network_mode: host
   privileged: true
+  gpus: all
+  runtime: nvidia
   volumes:
     - ${HOME}/.Xauthority:/home/mobile/.Xauthority:rw
     - .:/home/mobile/ros2_ws/src:rw
     - /tmp/.X11-unix:/tmp/.X11-unix:rw
     - /dev/dri:/dev/dri:rw
   environment:
+    - NVIDIA_VISIBLE_DEVICES=all
+    - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video,graphics,display
     - DISPLAY
     - QT_X11_NO_MITSHM=1
-    - LIBGL_ALWAYS_SOFTWARE=1
-    - QT_XCB_GL_INTEGRATION=software
-  ports:
-    - "9090:9090"
+    
+    # - LIBGL_ALWAYS_SOFTWARE=1
+    # - QT_XCB_GL_INTEGRATION=software
   working_dir: /home/mobile/ros2_ws
 
 services:
-  terminal:
+  fox:
     <<: *common-setup
+    image: fabook/fox:jetson-v0.0.3
     stdin_open: true
     tty: true
     devices:
-      - "/dev/video0:/dev/video0"
+      - /dev/video0:/dev/video0
       - /dev/video1:/dev/video1
-      - "/dev/dri:/dev/dri"
+    group_add:
+      - "video"
+      - "44"
+    command: [
+      "/bin/bash","-lc","
+      sudo chmod 666 /dev/ttyUSB* 2>/dev/null || true &&
+      sudo chmod 666 /dev/spidev* 2>/dev/null || true &&
+      sudo chmod 666 /dev/ttyACM* 2>/dev/null || true;
+      exec bash"
+      ]
+  terminal:
+    <<: *common-setup
+    image: fabook/fox:v0.0.1
+    stdin_open: true
+    tty: true
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
     group_add:
       - "video"
       - "44"
