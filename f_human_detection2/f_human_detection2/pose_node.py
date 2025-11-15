@@ -15,7 +15,7 @@ from .tracker import SimpleByteLike
 from .viz.overlay import draw_overlay
 from .viz.markers import make_markers
 from .diagnostics import Profiler, build_diag
-from f_human_detection_msgs.msg import PersonBody, PersonBodyArray
+from f_interfaces.msg import PersonBody, PersonBodyArray
 from .utils import resolve_model_path
 
 
