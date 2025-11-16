@@ -22,12 +22,13 @@ class PoseClassifier(Node):
         # Resolution for normalization
         # Set as in MMAction2 pretrained model's val preprocessing
         # TODO: understand whether we need to change resolution to the same as the camera
+        # 640
         self.img_height = 1080
         self.img_width = 1920
 
         # Change parameters without rebuilding pkg -> ros2 run f_gesture_recognition pose_classifier --ros-args -p num_frames:=100
-        self.declare_parameter('model', 'stgcn_ntu60_metadata.onnx')
-        self.declare_parameter('num_frames', 60)                        # Num of frames for single input to the model
+        self.declare_parameter('model', 'stgcn_ntu60_2_metadata.onnx')
+        self.declare_parameter('num_frames', 60)        # Num of frames for single input to the model
 
         # Read parameters
         model_name = self.get_parameter('model').get_parameter_value().string_value
@@ -121,7 +122,7 @@ class PoseClassifier(Node):
         Converts incoming PersonBody messages into normalized keypoint tensors.
 
         persons_msg: list[PersonBody]
-        Returns tensor of shape: [1, 1, T, 17, 3]
+        Returns tensor of shape: [num_batches, num_person, num_frames, num_joints, num_channels]
         """
         
         # Fill buffer with zero-frames until enough context exists
@@ -131,7 +132,7 @@ class PoseClassifier(Node):
 
         # TODO: Expand the buffer up to 200 frames and find a way to fill it
 
-        # If no persons detected → use zeros
+        # If no persons detected → use zeros for both persons
         if len(persons_msg) == 0:
             keypoints = np.zeros((17, 3), dtype=np.float32)
         else:
@@ -154,10 +155,17 @@ class PoseClassifier(Node):
             return None
 
         # Stack frames into one tensor: [T, 17, 3]
-        frames = np.stack(list(self.buffer), axis=0)
+        frames = np.stack(list(self.buffer), axis=0)  # Shape: [T, 17, 3]
 
-        # Expand dims to match ST-GCN model input: [1, 1, T, 17, 3]
-        inputs = frames[np.newaxis, np.newaxis, ...]
+        # Model performs better with 2 persons, manually set second person as zeros
+        person1_data = frames  # Shape: [T, 17, 3]
+        person2_data = np.zeros_like(frames)  # Shape: [T, 17, 3]
+        
+        # Stack both persons: [2, T, 17, 3]
+        both_persons = np.stack([person1_data, person2_data], axis=0)
+        
+        # Expand dims to match ST-GCN model input: [1, 2, T, 17, 3]
+        inputs = both_persons[np.newaxis, ...]
 
         return inputs.astype(np.float32)
     
