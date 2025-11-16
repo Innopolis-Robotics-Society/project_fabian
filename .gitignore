@@ -8,6 +8,6 @@ __pycache__/
 .idea/
 .vscode/
 .idea/
-*.onnx
+#*.onnx
 .DS_Store
 Thumbs.db
