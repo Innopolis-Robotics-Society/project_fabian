@@ -11,6 +11,7 @@ import onnxruntime as ort
 import json
 import numpy as np
 from collections import deque
+from scipy.special import softmax  
 
 class PoseClassifier(Node):
     def __init__(self):
@@ -173,15 +174,21 @@ class PoseClassifier(Node):
         """
         Interprets model outputs and extracts the most probable class label.
         """
+        # Scores from model
+        scores = outputs[0][0]  # Shape: (60,)
+        
+        # Apply softmax to convert scores to probabilities
+        probabilities = softmax(scores)
+        
         # Determine predicted class index
-        pred_class = np.argmax(outputs[0][0])
-
+        pred_class = np.argmax(probabilities)
+        
         # Convert class index into human-readable label
         label = self.action_descriptions[f"A{int(pred_class)+1}"]
-
-        # Extract model confidence score
-        confidence = float(outputs[0][0][pred_class])
-
+        
+        # Extract model confidence score (now a proper probability in [0, 1])
+        confidence = float(probabilities[pred_class])
+        
         return label, confidence
     
     def publish_detection(self, label, confidence):
