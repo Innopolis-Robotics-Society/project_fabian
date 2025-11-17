@@ -128,6 +128,8 @@ RUN apt-get update && \
         ros-${ROS_DISTRO}-urdfdom-headers \
         ros-${ROS_DISTRO}-urdf-tutorial \
         ros-${ROS_DISTRO}-v4l2-camera \
+        ros-${ROS_DISTRO}-ros2-control \
+        ros-${ROS_DISTRO}-ros2-controllers \       
         ros-${ROS_DISTRO}-camera-calibration \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
