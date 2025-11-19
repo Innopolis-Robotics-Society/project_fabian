@@ -28,7 +28,7 @@ class PoseClassifier(Node):
         self.img_width = 1920
 
         # Change parameters without rebuilding pkg -> ros2 run f_gesture_recognition pose_classifier --ros-args -p num_frames:=100
-        self.declare_parameter('model', 'stgcn_ntu5_metadata.onnx')
+        self.declare_parameter('model', 'stgcn_ntu60.onnx')
         self.declare_parameter('num_frames', 60)        # Num of frames for single input to the model
 
         # Read parameters
