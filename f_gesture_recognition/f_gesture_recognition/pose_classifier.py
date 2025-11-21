@@ -11,7 +11,6 @@ import onnxruntime as ort
 import json
 import numpy as np
 from collections import deque
-from scipy.special import softmax  
 
 class PoseClassifier(Node):
     def __init__(self):
@@ -27,7 +26,7 @@ class PoseClassifier(Node):
         self.img_height = 1080
         self.img_width = 1920
 
-        # Change parameters without rebuilding pkg -> ros2 run f_gesture_recognition pose_classifier --ros-args -p num_frames:=100
+        # Change parameters without rebuilding pkg -> ros2 run f_gesture_recognition pose_classifier --ros-args -p model:=stgcn_ntu17_best.onnx -p num_frames:=40
         self.declare_parameter('model', 'stgcn_ntu60.onnx')
         self.declare_parameter('num_frames', 60)        # Num of frames for single input to the model
 
@@ -178,7 +177,8 @@ class PoseClassifier(Node):
         scores = outputs[0][0]  # Shape: (60,)
         
         # Apply softmax to convert scores to probabilities
-        probabilities = softmax(scores)
+        exp_scores = np.exp(scores - np.max(scores))  # subtract max for numerical stability
+        probabilities = exp_scores / np.sum(exp_scores)
         
         # Determine predicted class index
         pred_class = np.argmax(probabilities)
