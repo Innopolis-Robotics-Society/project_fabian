@@ -14,6 +14,8 @@ import numpy as np
 from collections import deque
 from scipy.special import softmax  
 
+PREDICTION_EACH_FRAMES = 8
+
 class PoseClassifier(Node):
     def __init__(self):
         super().__init__('pose_classifier')
@@ -36,6 +38,7 @@ class PoseClassifier(Node):
         # Read parameters
         model_name = self.get_parameter('model').get_parameter_value().string_value
         self.num_frames = self.get_parameter('num_frames').get_parameter_value().integer_value
+        self.prediction_ticker = 0
         
         # Buffer storing last N frames of keypoints
         self.buffer = deque(maxlen=self.num_frames)
@@ -122,6 +125,12 @@ class PoseClassifier(Node):
         if inputs is None:
             self.get_logger().debug("Waiting for buffer to fill...")
             return
+
+        self.prediction_ticker += 1
+        if self.prediction_ticker < PREDICTION_EACH_FRAMES:
+            return
+
+        self.prediction_ticker = 0
 
         # Run inference through ONNX session
         outputs = self.session.run(None, {self.input_name: inputs})
