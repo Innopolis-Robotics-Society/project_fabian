@@ -5,6 +5,7 @@ from builtin_interfaces.msg import Time
 from std_msgs.msg import Header
 
 from f_interfaces.msg import PersonBody, PersonBodyArray, PersonAction
+from diagnostic_msgs.msg import DiagnosticArray
 
 import os
 import onnxruntime as ort
@@ -26,10 +27,11 @@ class PoseClassifier(Node):
         # 640
         self.img_height = 1080
         self.img_width = 1920
+        self.fps = 0
 
         # Change parameters without rebuilding pkg -> ros2 run f_gesture_recognition pose_classifier --ros-args -p num_frames:=100
         self.declare_parameter('model', 'stgcn_ntu60_2_metadata.onnx')
-        self.declare_parameter('num_frames', 60)        # Num of frames for single input to the model
+        self.declare_parameter('num_frames', 200)        # Num of frames for single input to the model
 
         # Read parameters
         model_name = self.get_parameter('model').get_parameter_value().string_value
@@ -46,6 +48,9 @@ class PoseClassifier(Node):
 
         # Subscribe to keypoints
         self.sub_keypoints = self.create_subscription(PersonBodyArray, "/f_human_detection2/persons", self.keypoints_cb, 10)
+
+        # Subscribe to pose model output fps
+        self.sub_fps = self.create_subscription(DiagnosticArray, "/f_human_detection2/metrics", self.fps_cb, 10)
 
         # Publisher for recognized actions/gestures
         self.pub_actions = self.create_publisher(PersonAction, "/f_gesture_recognition/actions", 10)
@@ -90,6 +95,15 @@ class PoseClassifier(Node):
         except Exception as e:
             self.get_logger().error(f'Failed to load ONNX model: {e}')
             return None
+
+    def fps_cb(self, msg):
+        """
+        Callback updates current fps of the pose model output whenever its metris are posted.
+        """
+        for value in msg.status[0].values:
+            if value.key == "fps":
+                self.fps = value.value
+                break
 
     def keypoints_cb(self, msg):
         """
