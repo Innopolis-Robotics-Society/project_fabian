@@ -21,6 +21,7 @@ setup(
     entry_points={
         "console_scripts": [
             "pose_node = f_human_detection2.pose_node:main",
+            "video_publisher = f_human_detection2.video_publisher:main",
         ],
     },
 )
