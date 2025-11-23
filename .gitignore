@@ -12,3 +12,5 @@ __pycache__/
 #*.onnx
 .DS_Store
 Thumbs.db
+*.mp4
+*.npy
