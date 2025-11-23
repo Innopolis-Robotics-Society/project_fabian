@@ -8,13 +8,15 @@ from f_interfaces.msg import PersonBody, PersonBodyArray, PersonAction
 from diagnostic_msgs.msg import DiagnosticArray
 
 import os
+from math import ceil
 import onnxruntime as ort
 import json
 import numpy as np
 from collections import deque
-from scipy.special import softmax  
+from scipy.special import softmax
 
 PREDICTION_EACH_FRAMES = 8
+TARGET_FPS = 30
 
 class PoseClassifier(Node):
     def __init__(self):
@@ -105,7 +107,7 @@ class PoseClassifier(Node):
         """
         for value in msg.status[0].values:
             if value.key == "fps":
-                self.fps = value.value
+                self.fps = float(value.value)
                 break
 
     def keypoints_cb(self, msg):
@@ -113,56 +115,13 @@ class PoseClassifier(Node):
         Callback executed when a new set of person keypoints is received.
         Preprocess input, run inference, postprocess output and publish results.
         """
-
-        if self.session is None:
-            self.get_logger().warning('ONNX session not available')
-            return
-
-        # Convert incoming keypoints into proper input shape
-        inputs = self.preprocess_input(msg.persons)
-
-        # Wait until buffer accumulates enough frames
-        if inputs is None:
-            self.get_logger().debug("Waiting for buffer to fill...")
-            return
-
-        self.prediction_ticker += 1
-        if self.prediction_ticker < PREDICTION_EACH_FRAMES:
-            return
-
-        self.prediction_ticker = 0
-
-        # Run inference through ONNX session
-        outputs = self.session.run(None, {self.input_name: inputs})
-
-        # Decode model prediction
-        label, confidence = self.postprocess_output(outputs)
-
-        # Publish recognized action
-        self.publish_detection(label, confidence)
-
-    def preprocess_input(self, persons_msg):
-        """
-        Converts incoming PersonBody messages into normalized keypoint tensors.
-
-        persons_msg: list[PersonBody]
-        Returns tensor of shape: [num_batches, num_person, num_frames, num_joints, num_channels]
-        """
-        
-        # Fill buffer with zero-frames until enough context exists
-        # needed for first initialization
-        while len(self.buffer) < self.num_frames:
-            self.buffer.append(np.zeros((17, 3), dtype=np.float32))
-
-        # TODO: Expand the buffer up to 200 frames and find a way to fill it
-
         # If no persons detected → use zeros for both persons
-        if len(persons_msg) == 0:
+        if len(msg.persons) == 0:
             keypoints = np.zeros((17, 3), dtype=np.float32)
         else:
             # Currently only the first detected person is used
             # TODO: understand which person to choose or scan all persons
-            p = persons_msg[0]
+            p = msg.persons[0]
 
             # Keypoints array shape is [17, 3]
             keypoints = np.array(p.keypoints, dtype=np.float32).reshape(17, 3)
@@ -174,25 +133,57 @@ class PoseClassifier(Node):
         # Add new frame to buffer
         self.buffer.append(keypoints)
 
-        # Not enough frames → delay inference
+        self.prediction_ticker += 1
+        if self.prediction_ticker >= PREDICTION_EACH_FRAMES:
+            self.prediction_ticker = 0
+            # Publish recognized action
+            self.publish_prediction(msg.persons)
+
+    def preprocess_input(self, persons_msg):
+        """
+        Converts incoming PersonBody messages into normalized keypoint tensors.
+
+        persons_msg: list[PersonBody]
+        Returns tensor of shape: [num_batches, num_person, num_frames, num_joints, num_channels]
+        """
+        # Fill buffer with zero-frames until enough context exists
+        # needed for first initialization
+        while len(self.buffer) < self.num_frames:
+            self.buffer.append(np.zeros((17, 3), dtype=np.float32))
+
+        # Not enough frames -> delay inference
         if len(self.buffer) < self.num_frames:
             return None
 
+        buffer = np.array(list(self.buffer))
+        frames = []
+        # TODO: better logic behind number of inserted frames
+        n_to_add = int(ceil(TARGET_FPS / self.fps))
+        for i in range((buffer.shape[0] * n_to_add - 200) // n_to_add, buffer.shape[0] - 1):
+            frames.append(buffer[i])
+            intermediate = np.array([
+                [np.linspace(buffer[i,j,k], buffer[i+1,j,k], n_to_add + 2)[1:-1] for k in range(3)]
+                for j in range(buffer.shape[1])
+            ])
+            for j in range(intermediate.shape[2]):
+                frames.append(intermediate[:,:,j])
+        frames.append(buffer[-1])
+
         # Stack frames into one tensor: [T, 17, 3]
-        frames = np.stack(list(self.buffer), axis=0)  # Shape: [T, 17, 3]
+        frames = np.stack(list(frames[-self.num_frames:]), axis=0)  # Shape: [T, 17, 3]
 
         # Model performs better with 2 persons, manually set second person as zeros
         person1_data = frames  # Shape: [T, 17, 3]
         person2_data = np.zeros_like(frames)  # Shape: [T, 17, 3]
-        
+
         # Stack both persons: [2, T, 17, 3]
         both_persons = np.stack([person1_data, person2_data], axis=0)
-        
+
         # Expand dims to match ST-GCN model input: [1, 2, T, 17, 3]
         inputs = both_persons[np.newaxis, ...]
 
         return inputs.astype(np.float32)
-    
+
     def postprocess_output(self, outputs):
         """
         Interprets model outputs and extracts the most probable class label.
@@ -214,10 +205,28 @@ class PoseClassifier(Node):
         
         return label, confidence
     
-    def publish_detection(self, label, confidence):
+    def publish_prediction(self, persons):
         """
         Publishes the recognized action as a PersonAction message.
         """
+        if self.session is None:
+            self.get_logger().warning('ONNX session not available')
+            return
+
+        # Convert incoming keypoints into proper input shape
+        input = self.preprocess_input(persons)
+
+        # Wait until buffer accumulates enough frames
+        if input is None:
+            self.get_logger().debug("Waiting for buffer to fill...")
+            return
+
+        # Run inference through ONNX session
+        outputs = self.session.run(None, {self.input_name: input})
+
+        # Decode model prediction
+        label, confidence = self.postprocess_output(outputs)
+
         action = PersonAction()
         action.header = Header()
         action.header.stamp = self.get_clock().now().to_msg()
