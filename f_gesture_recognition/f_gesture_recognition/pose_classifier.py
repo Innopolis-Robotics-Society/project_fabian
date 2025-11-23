@@ -20,7 +20,7 @@ class PoseClassifier(Node):
 
         # Change parameters without rebuilding pkg:
         #   ros2 run f_gesture_recognition pose_classifier --ros-args -p model:=stgcn_ntu60_14fps.onnx -p num_frames:=14 -p img_shape:="640 384" -p prediction_each_frame:=8 -p target_fps:=14 
-        self.declare_parameter('model', 'stgcn_ntu_custom_16.onnx')
+        self.declare_parameter('model', 'stgcn_custom_16epoch.onnx')
         self.declare_parameter('num_frames', 50)           # Num of frames for single input to the model
         self.declare_parameter('img_shape', "640 384")      # Shape of frame image for normalization
         self.declare_parameter('prediction_each_frame', 2)
