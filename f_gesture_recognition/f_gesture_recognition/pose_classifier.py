@@ -155,8 +155,8 @@ class PoseClassifier(Node):
         buffer = np.array(list(self.buffer))
         frames = []
         # TODO: better logic behind number of inserted frames
-        n_to_add = int(ceil(self.target_fps/ self.fps))
-        for i in range((buffer.shape[0] * n_to_add - 200) // n_to_add, buffer.shape[0] - 1):
+        n_to_add = int(ceil(self.target_fps / self.fps))
+        for i in range((buffer.shape[0] * n_to_add - self.num_frames) // n_to_add, buffer.shape[0] - 1):
             frames.append(buffer[i])
             intermediate = np.array([
                 [np.linspace(buffer[i,j,k], buffer[i+1,j,k], n_to_add + 2)[1:-1] for k in range(3)]
