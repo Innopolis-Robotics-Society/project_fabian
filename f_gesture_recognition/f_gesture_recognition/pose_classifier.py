@@ -20,11 +20,11 @@ class PoseClassifier(Node):
 
         # Change parameters without rebuilding pkg:
         #   ros2 run f_gesture_recognition pose_classifier --ros-args -p model:=stgcn_ntu60_14fps.onnx -p num_frames:=14 -p img_shape:="640 384" -p prediction_each_frame:=8 -p target_fps:=14 
-        self.declare_parameter('model', 'stgcn_ntu60.onnx')
-        self.declare_parameter('num_frames', 100)           # Num of frames for single input to the model
+        self.declare_parameter('model', 'stgcn_ntu_custom_16.onnx')
+        self.declare_parameter('num_frames', 50)           # Num of frames for single input to the model
         self.declare_parameter('img_shape', "640 384")      # Shape of frame image for normalization
-        self.declare_parameter('prediction_each_frame', 8)
-        self.declare_parameter('target_fps', 30)
+        self.declare_parameter('prediction_each_frame', 2)
+        self.declare_parameter('target_fps', 15)
 
         # Read parameters
         model_name = self.get_parameter('model').get_parameter_value().string_value
@@ -169,15 +169,19 @@ class PoseClassifier(Node):
         # Stack frames into one tensor: [T, 17, 3]
         frames = np.stack(list(frames[-self.num_frames:]), axis=0)  # Shape: [T, 17, 3]
 
+        # Two person case
         # Model performs better with 2 persons, manually set second person as zeros
-        person1_data = frames  # Shape: [T, 17, 3]
-        person2_data = np.zeros_like(frames)  # Shape: [T, 17, 3]
+        #person1_data = frames  # Shape: [T, 17, 3]
+        #person2_data = np.zeros_like(frames)  # Shape: [T, 17, 3]
 
         # Stack both persons: [2, T, 17, 3]
-        both_persons = np.stack([person1_data, person2_data], axis=0)
+        #both_persons = np.stack([person1_data, person2_data], axis=0)
 
         # Expand dims to match ST-GCN model input: [1, 2, T, 17, 3]
-        inputs = both_persons[np.newaxis, ...]
+        #inputs = both_persons[np.newaxis, ...]
+
+        # One person case
+        inputs = frames[np.newaxis, np.newaxis, ...]
 
         return inputs.astype(np.float32)
 
