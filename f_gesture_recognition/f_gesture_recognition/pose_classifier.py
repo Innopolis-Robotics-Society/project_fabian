@@ -13,33 +13,30 @@ import onnxruntime as ort
 import json
 import numpy as np
 from collections import deque
-from scipy.special import softmax
-
-PREDICTION_EACH_FRAMES = 8
-TARGET_FPS = 30
 
 class PoseClassifier(Node):
     def __init__(self):
         super().__init__('pose_classifier')
 
-        # Name of the input tensor for onnx
-        self.input_name = None
-
-        # Resolution for normalization
-        # Set as in MMAction2 pretrained model's val preprocessing
-        # TODO: understand whether we need to change resolution to the same as the camera
-        # 640
-        self.img_height = 1080
-        self.img_width = 1920
-        self.fps = 0
-
-        # Change parameters without rebuilding pkg -> ros2 run f_gesture_recognition pose_classifier --ros-args -p num_frames:=100
-        self.declare_parameter('model', 'stgcn_ntu60_2_metadata.onnx')
-        self.declare_parameter('num_frames', 200)        # Num of frames for single input to the model
+        # Change parameters without rebuilding pkg:
+        #   ros2 run f_gesture_recognition pose_classifier --ros-args -p model:=stgcn_ntu60_14fps.onnx -p num_frames:=14 -p img_shape:="640 384" -p prediction_each_frame:=8 -p target_fps:=14 
+        self.declare_parameter('model', 'stgcn_ntu60.onnx')
+        self.declare_parameter('num_frames', 100)           # Num of frames for single input to the model
+        self.declare_parameter('img_shape', "640 384")      # Shape of frame image for normalization
+        self.declare_parameter('prediction_each_frame', 8)
+        self.declare_parameter('target_fps', 30)
 
         # Read parameters
         model_name = self.get_parameter('model').get_parameter_value().string_value
         self.num_frames = self.get_parameter('num_frames').get_parameter_value().integer_value
+        img_shape = self.get_parameter('img_shape').get_parameter_value().string_value.split(' ')
+        self.img_width = int(img_shape[0])
+        self.img_height = int(img_shape[1])
+        self.prediction_each_frame = self.get_parameter('prediction_each_frame').get_parameter_value().integer_value
+        self.target_fps = self.get_parameter('target_fps').get_parameter_value().integer_value
+
+        self.input_name = None      # name of the input tensor for onnx
+        self.fps = 0
         self.prediction_ticker = 0
         
         # Buffer storing last N frames of keypoints
@@ -134,10 +131,10 @@ class PoseClassifier(Node):
         self.buffer.append(keypoints)
 
         self.prediction_ticker += 1
-        if self.prediction_ticker >= PREDICTION_EACH_FRAMES:
+        if self.prediction_ticker >= self.prediction_each_frame:
             self.prediction_ticker = 0
             # Publish recognized action
-            self.publish_prediction(msg.persons)
+            self.predict(msg.persons)
 
     def preprocess_input(self, persons_msg):
         """
@@ -158,7 +155,7 @@ class PoseClassifier(Node):
         buffer = np.array(list(self.buffer))
         frames = []
         # TODO: better logic behind number of inserted frames
-        n_to_add = int(ceil(TARGET_FPS / self.fps))
+        n_to_add = int(ceil(self.target_fps/ self.fps))
         for i in range((buffer.shape[0] * n_to_add - 200) // n_to_add, buffer.shape[0] - 1):
             frames.append(buffer[i])
             intermediate = np.array([
@@ -192,7 +189,8 @@ class PoseClassifier(Node):
         scores = outputs[0][0]  # Shape: (60,)
         
         # Apply softmax to convert scores to probabilities
-        probabilities = softmax(scores)
+        exp_scores = np.exp(scores - np.max(scores))  # subtract max for numerical stability
+        probabilities = exp_scores / np.sum(exp_scores)
         
         # Determine predicted class index
         pred_class = np.argmax(probabilities)
@@ -205,9 +203,9 @@ class PoseClassifier(Node):
         
         return label, confidence
     
-    def publish_prediction(self, persons):
+    def predict(self, persons):
         """
-        Publishes the recognized action as a PersonAction message.
+        Predict actiond and publishes it as a PersonAction message.
         """
         if self.session is None:
             self.get_logger().warning('ONNX session not available')
