@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import time
 import threading
 import struct
 from typing import Optional
@@ -10,7 +9,7 @@ import lcm  # sudo apt-get install liblcm-dev python3-lcm
 import rclpy
 from rclpy.node import Node
 
-from f_interfaces.msg import PersonAction  # PersonAction.msg
+from f_interfaces.msg import FoxCommand
 
 
 # Каналы — из include/unitree_legged_sdk/lcm.h
@@ -161,7 +160,7 @@ class A1LCMControlNode(Node):
         self.declare_parameter("walk_vx", 0.3)              # walking speed
         self.declare_parameter("jump_vx", 0.3)              # jumping speed
         self.declare_parameter("wave_yaw_speed", 0.5)       # rad/s для waving
-        self.declare_parameter("action_topic", "person_action")
+        self.declare_parameter("command_topic", "/f_fox_command/command")
         self.declare_parameter("stand_body_height", 0.0)
         self.declare_parameter("action_timeout", 1.5)       # СЕКУНД без сообщений
 
@@ -169,7 +168,7 @@ class A1LCMControlNode(Node):
         self.walk_vx = float(self.get_parameter("walk_vx").value)
         self.jump_vx = float(self.get_parameter("jump_vx").value)
         self.wave_yaw_speed = float(self.get_parameter("wave_yaw_speed").value)
-        self.action_topic = self.get_parameter("action_topic").get_parameter_value().string_value
+        self.command_topic = self.get_parameter("command_topic").get_parameter_value().string_value
         self.stand_body_height = float(self.get_parameter("stand_body_height").value)
         self.action_timeout = float(self.get_parameter("action_timeout").value)
 
@@ -185,17 +184,17 @@ class A1LCMControlNode(Node):
         self.command_active = False        # есть ли действующая команда
 
         # Подписка на PersonAction
-        self.action_sub = self.create_subscription(
-            PersonAction,
-            self.action_topic,
-            self.action_callback,
+        self.sub_command = self.create_subscription(
+            FoxCommand,
+            self.command_topic,
+            self.command_cb,
             10,
         )
 
         self.get_logger().info(
             f"A1LCMControlNode started. "
             f"dt={self.dt}, walk_vx={self.walk_vx}, jump_vx={self.jump_vx}, "
-            f"wave_yaw_speed={self.wave_yaw_speed}, action_topic='{self.action_topic}', "
+            f"wave_yaw_speed={self.wave_yaw_speed}, action_topic='{self.command_topic}', "
             f"action_timeout={self.action_timeout}"
         )
 
@@ -207,9 +206,9 @@ class A1LCMControlNode(Node):
 
     # ====== PersonAction callback ======
 
-    def action_callback(self, msg: PersonAction):
-        now = time.time()
-        new_label = (msg.label or "").strip().lower()
+    def command_cb(self, msg: FoxCommand):
+        now = self.get_clock().now().nanoseconds / 10**9
+        new_label = (msg.command or "").strip().lower()
         if not new_label:
             # пустой label: игнорируем, но фиксируем факт прихода сообщения
             self.last_msg_time = now
@@ -233,7 +232,7 @@ class A1LCMControlNode(Node):
     # ====== main control loop ======
 
     def timer_callback(self):
-        now = time.time()
+        now = self.get_clock().now().nanoseconds / 10**9
 
         # Проверяем таймаут команд
         if self.last_msg_time is None:
@@ -271,7 +270,7 @@ class A1LCMControlNode(Node):
         elif label == "walking":
             cmd = self._cmd_walking()
             phase = "walking"
-        elif label == "waving":
+        elif label == "salute":
             cmd = self._cmd_waving(elapsed)
             phase = "waving"
         elif label == "jumping":
