@@ -14,6 +14,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PersonBody.msg"
   "msg/PersonBodyArray.msg"
   "msg/PersonAction.msg"
+  "msg/FoxCommand.msg"
   DEPENDENCIES std_msgs
 )
 
