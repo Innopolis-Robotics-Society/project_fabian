@@ -265,6 +265,14 @@ class A1LCMControlNode(Node):
 
     # ====== callbacks ======
 
+    def _is_persistent_label(self, label: str) -> bool:
+        """
+        Команды, которые считаем "одноразовыми триггерами":
+        они продолжают выполняться, даже если FoxCommand больше не приходит,
+        пока их не перебьёт другая команда.
+        """
+        return label in ("salute", "jumping", "come_closer")
+
     def command_cb(self, msg: FoxCommand):
         now = self.get_clock().now().nanoseconds / 10**9
         new_label = (msg.command or "").strip().lower()
