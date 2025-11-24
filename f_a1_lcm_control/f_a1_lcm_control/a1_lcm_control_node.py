@@ -113,15 +113,6 @@ class A1LCMClient(object):
         self._rx_thread = threading.Thread(target=self._lcm_loop)
         self._rx_thread.daemon = True
         self._rx_thread.start()
-    
-    def _is_persistent_label(self, label: str) -> bool:
-        """
-        Команды, которые считаем "одноразовыми триггерами":
-        они продолжают выполняться, даже если FoxCommand больше не приходит,
-        пока их не перебьёт другая команда.
-        """
-        return label in ("salute", "jumping", "come_closer")
-
 
     def _state_handler(self, channel, data):
         # сохраняем сырые байты HighState (разбор можно добавить позже)
@@ -162,16 +153,13 @@ class A1LCMControlNode(Node):
             * если по центру -> идём вперёд, пока bbox не станет «достаточно большим»
         - иначе или при отсутствии команд дольше action_timeout: force stand (mode=1)
 
-    Важные моменты:
+    Логика команд:
 
-      1) Действие переинициализируется ТОЛЬКО:
-           - при смене label, ИЛИ
-           - если до этого команда была неактивна (таймаут).
-
-      2) Если сообщений FoxCommand нет дольше action_timeout секунд —
-         считаем, что команды больше нет → робот стоит.
-
-      3) Для come_closer используется последний PersonBodyArray, не старше person_timeout.
+      - Любая команда при первом приходе запускает действие.
+      - Действие гарантированно живёт хотя бы min_action_duration секунд,
+        даже если новых FoxCommand не приходит.
+      - Новая команда всегда немедленно перебивает текущую (нет очереди).
+      - После min_action_duration и при отсутствии свежих FoxCommand робот встаёт.
     """
 
     def __init__(self):
@@ -185,6 +173,7 @@ class A1LCMControlNode(Node):
         self.declare_parameter("command_topic", "/f_fox_command/command")
         self.declare_parameter("stand_body_height", 0.0)
         self.declare_parameter("action_timeout", 1.5)       # СЕКУНД без сообщений FoxCommand
+        self.declare_parameter("min_action_duration", 2.0)  # гарантированная длительность действия, сек
 
         # Для come_closer
         self.declare_parameter("person_topic", "/person_bodies")
@@ -203,6 +192,7 @@ class A1LCMControlNode(Node):
         self.command_topic = self.get_parameter("command_topic").get_parameter_value().string_value
         self.stand_body_height = float(self.get_parameter("stand_body_height").value)
         self.action_timeout = float(self.get_parameter("action_timeout").value)
+        self.min_action_duration = float(self.get_parameter("min_action_duration").value)
 
         self.person_topic = self.get_parameter("person_topic").get_parameter_value().string_value
         self.image_width = int(self.get_parameter("image_width").value)
@@ -222,7 +212,6 @@ class A1LCMControlNode(Node):
 
         # Время последнего ПОЛУЧЕННОГО FoxCommand
         self.last_msg_time: Optional[float] = None
-        self.command_active = False
 
         # Последний человек из PersonBodyArray (для come_closer)
         self.last_person_time: Optional[float] = None
@@ -254,6 +243,7 @@ class A1LCMControlNode(Node):
             f"person_topic='{self.person_topic}', "
             f"image_size=({self.image_width}x{self.image_height}), "
             f"action_timeout={self.action_timeout}, "
+            f"min_action_duration={self.min_action_duration}, "
             f"person_timeout={self.person_timeout}"
         )
 
@@ -261,20 +251,12 @@ class A1LCMControlNode(Node):
         self.timer = self.create_timer(self.dt, self.timer_callback)
 
         self._step = 0
-        self._last_timeout_state = False  # чтобы один раз логировать переход в idle
+        self._last_timeout_state = False  # для логов перехода в idle
 
     # ====== callbacks ======
 
-    def _is_persistent_label(self, label: str) -> bool:
-        """
-        Команды, которые считаем "одноразовыми триггерами":
-        они продолжают выполняться, даже если FoxCommand больше не приходит,
-        пока их не перебьёт другая команда.
-        """
-        return label in ("salute", "jumping", "come_closer")
-
     def command_cb(self, msg: FoxCommand):
-        now = self.get_clock().now().nanoseconds / 10**9
+        now = self.get_clock().now().nanoseconds / 1e9
         new_label = (msg.command or "").strip().lower()
         if not new_label:
             # пустая команда: игнорируем, но фиксируем факт прихода сообщения
@@ -285,8 +267,8 @@ class A1LCMControlNode(Node):
         if new_label in ("come closer", "come"):
             new_label = "come_closer"
 
-        # Нужно ли переинициализировать действие?
-        if (not self.command_active) or (new_label != self.current_label):
+        # Переинициализируем действие при смене команды
+        if (self.current_label is None) or (new_label != self.current_label):
             self.current_label = new_label
             self.action_start_time = now
 
@@ -301,17 +283,15 @@ class A1LCMControlNode(Node):
                     f"New action label: '{self.current_label}'"
                 )
 
-        # Обновляем "последнее время команды" и флаг активности
+        # Обновляем "последнее время команды"
         self.last_msg_time = now
-        self.command_active = True
-
 
     def person_cb(self, msg: PersonBodyArray):
         """
         Выбираем PersonBody с максимальным score и валидным bbox,
         сохраняем центр и высоту bbox.
         """
-        now = self.get_clock().now().nanoseconds / 10**9
+        now = self.get_clock().now().nanoseconds / 1e9
 
         best_person = None
         best_score = -1.0
@@ -337,49 +317,39 @@ class A1LCMControlNode(Node):
     # ====== main control loop ======
 
     def timer_callback(self):
-        now = self.get_clock().now().nanoseconds / 10**9
+        now = self.get_clock().now().nanoseconds / 1e9
 
-        raw_label = self.current_label
-
-        # По умолчанию считаем, что нет активной команды
-        command_active = False
-
-        if raw_label is None:
-            label = None
+        # Свежесть FoxCommand (только по timeout)
+        if self.last_msg_time is None:
+            raw_active = False
         else:
-            # Для "персистентных" команд игнорируем таймаут по FoxCommand:
-            # команда продолжает выполняться, пока не придёт другая.
-            if self._is_persistent_label(raw_label):
-                label = raw_label
-                command_active = True
-            else:
-                # Для остальных (например, walking) оставляем старую
-                # семантику: надо периодически обновлять команду.
-                if self.last_msg_time is not None:
-                    command_active = (now - self.last_msg_time) <= self.action_timeout
-                else:
-                    command_active = False
+            raw_active = (now - self.last_msg_time) <= self.action_timeout
 
-                label = raw_label if command_active else None
-
-        # Логируем вход/выход из состояния "нет команд" только для
-        # НЕперсистентных команд (по сути, для walking и любых, которые ты
-        # не включил в _is_persistent_label).
-        if command_active != self._last_timeout_state and not self._is_persistent_label(raw_label or ""):
-            if not command_active:
-                self.get_logger().warn(
-                    f"No FoxCommand received for > {self.action_timeout} s. "
-                    f"Switching to stand."
-                )
-            else:
-                self.get_logger().info("FoxCommand commands active again.")
-            self._last_timeout_state = command_active
-
-        # Считаем elapsed с момента НАЧАЛА ТЕКУЩЕГО действия
-        if label is None or self.action_start_time is None:
+        # Время с начала текущего действия
+        if self.current_label is None or self.action_start_time is None:
             elapsed = 0.0
         else:
             elapsed = now - self.action_start_time
+
+        # Гарантия: как только команда стартовала, она живёт хотя бы min_action_duration
+        if self.current_label is None or self.action_start_time is None:
+            min_duration_active = False
+        else:
+            min_duration_active = elapsed < self.min_action_duration
+
+        # Итог: команда активна, если:
+        #   - приходят свежие FoxCommand ИЛИ
+        #   - ещё не истёк минимальный срок действия
+        command_active = raw_active or min_duration_active
+        label = self.current_label if command_active else None
+
+        # Логируем переход в idle, когда полностью вышли из активности
+        if command_active != self._last_timeout_state and not command_active:
+            self.get_logger().warn(
+                f"No FoxCommand and action duration > {self.min_action_duration}s. "
+                f"Switching to stand."
+            )
+        self._last_timeout_state = command_active
 
         # Выбор команды
         if label is None:
@@ -415,7 +385,6 @@ class A1LCMControlNode(Node):
             self.get_logger().info(
                 f"phase={phase}, label={label}, elapsed={elapsed:.2f}"
             )
-
 
     # ====== motion patterns ======
 
