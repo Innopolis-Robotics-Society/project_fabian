@@ -11,7 +11,7 @@ class CommandNode(Node):
     # map gesture labels to command labels
     LABEL_COMMAND = {
         'cross arms': 'salute',
-        'stop': 'stop',
+        #'stop': 'stop',
         'come closer': 'come closer',
         'come to me': 'come to me',
     }
@@ -31,9 +31,9 @@ class CommandNode(Node):
         # count so many times before sending a command
         self.declare_parameter('prediction_successes', 2)
         # minimum confidence of a prediction
-        self.declare_parameter('prediction_threshold', 0.6)
+        self.declare_parameter('prediction_threshold', 0.5)
         # wait before publishing another command
-        self.declare_parameter('command_cooldown', 10.0)
+        self.declare_parameter('command_cooldown', 5.0)
 
         self.prediction_cooldown = self.get_parameter('prediction_cooldown').get_parameter_value().double_value
         self.prediction_successes = self.get_parameter('prediction_successes').get_parameter_value().integer_value
