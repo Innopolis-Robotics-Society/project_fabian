@@ -155,16 +155,19 @@ class PoseClassifier(Node):
         buffer = np.array(list(self.buffer))
         frames = []
         # TODO: better logic behind number of inserted frames
-        n_to_add = int(ceil(self.target_fps / self.fps)) if 0 < self.fps < self.target_fps else 1
-        for i in range((buffer.shape[0] * n_to_add - self.num_frames) // n_to_add, buffer.shape[0] - 1):
-            frames.append(buffer[i])
-            intermediate = np.array([
-                [np.linspace(buffer[i,j,k], buffer[i+1,j,k], n_to_add + 2)[1:-1] for k in range(3)]
-                for j in range(buffer.shape[1])
-            ])
-            for j in range(intermediate.shape[2]):
-                frames.append(intermediate[:,:,j])
-        frames.append(buffer[-1])
+        n_to_add = int(ceil(self.target_fps / self.fps)) if 0 < self.fps < self.target_fps else 0
+        if n_to_add != 0:
+            for i in range((buffer.shape[0] * n_to_add - self.num_frames) // n_to_add, buffer.shape[0] - 1):
+                frames.append(buffer[i])
+                intermediate = np.array([
+                    [np.linspace(buffer[i,j,k], buffer[i+1,j,k], n_to_add + 2)[1:-1] for k in range(3)]
+                    for j in range(buffer.shape[1])
+                ])
+                for j in range(intermediate.shape[2]):
+                    frames.append(intermediate[:,:,j])
+            frames.append(buffer[-1])
+        else:
+            frames = list(buffer)
 
         # Stack frames into one tensor: [T, 17, 3]
         frames = np.stack(list(frames[-self.num_frames:]), axis=0)  # Shape: [T, 17, 3]
