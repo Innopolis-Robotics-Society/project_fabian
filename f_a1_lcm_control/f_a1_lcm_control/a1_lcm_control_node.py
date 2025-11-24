@@ -260,7 +260,7 @@ class A1LCMControlNode(Node):
         now = self.get_clock().now().nanoseconds / 10**9
         new_label = (msg.command or "").strip().lower()
         if not new_label:
-            # пустой label: игнорируем, но фиксируем факт прихода сообщения
+            # пустая команда: игнорируем, но фиксируем факт прихода сообщения
             self.last_msg_time = now
             return
 
@@ -272,14 +272,22 @@ class A1LCMControlNode(Node):
         if (not self.command_active) or (new_label != self.current_label):
             self.current_label = new_label
             self.action_start_time = now
-            self.get_logger().info(
-                f"New action label: '{self.current_label}', "
-                f"confidence={msg.confidence:.3f}"
-            )
+
+            desc = (msg.description or "").strip()
+            if desc:
+                self.get_logger().info(
+                    f"New action label: '{self.current_label}', "
+                    f"description='{desc}'"
+                )
+            else:
+                self.get_logger().info(
+                    f"New action label: '{self.current_label}'"
+                )
 
         # Обновляем "последнее время команды" и флаг активности
         self.last_msg_time = now
         self.command_active = True
+
 
     def person_cb(self, msg: PersonBodyArray):
         """
