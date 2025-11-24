@@ -10,33 +10,26 @@ from f_interfaces.msg import PersonAction, FoxCommand
 class CommandNode(Node):
     # map gesture labels to command labels
     LABEL_COMMAND = {
-        'drink water': 'salute',
-        'hand waving': 'salute',
-        'eat meal/snack': 'salute',
-        'brushing teeth': 'salute',
-        'brushing hair': 'salute',
-        'cheer up': 'salute',
-        'hand waving': 'salute',
-        'salute': 'salute',
-        'taking a selfie': 'salute',
-        'touch head (headache)': 'salute',
-        'wipe face': 'salute',
-        'touch neck (neckache)': 'salute',
-        'use a fan (with hand or paper)/feeling warm': 'salute',
-        'put on a hat/cap': 'salute',
+        'cross arms': 'salute',
+        'stop': 'stop',
+        'come closer': 'come closer',
+        'come to me': 'come to me',
     }
 
     COMMAND_DESCRIPTIONS = {
-        'salute': "Greete the human"
+        'salute': "Greete the human",
+        'stop': "",
+        'come closer': "",
+        'come to me': "",
     }
 
     def __init__(self):
         super().__init__("command_node")
 
         # wait at least this time before increasing the counter on a prediction
-        self.declare_parameter('prediction_cooldown', 0.2)
+        self.declare_parameter('prediction_cooldown', 0.0)
         # count so many times before sending a command
-        self.declare_parameter('prediction_successes', 3)
+        self.declare_parameter('prediction_successes', 2)
         # minimum confidence of a prediction
         self.declare_parameter('prediction_threshold', 0.6)
         # wait before publishing another command
