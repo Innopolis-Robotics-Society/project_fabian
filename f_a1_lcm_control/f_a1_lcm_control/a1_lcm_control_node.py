@@ -113,6 +113,15 @@ class A1LCMClient(object):
         self._rx_thread = threading.Thread(target=self._lcm_loop)
         self._rx_thread.daemon = True
         self._rx_thread.start()
+    
+    def _is_persistent_label(self, label: str) -> bool:
+        """
+        Команды, которые считаем "одноразовыми триггерами":
+        они продолжают выполняться, даже если FoxCommand больше не приходит,
+        пока их не перебьёт другая команда.
+        """
+        return label in ("salute", "jumping", "come_closer")
+
 
     def _state_handler(self, channel, data):
         # сохраняем сырые байты HighState (разбор можно добавить позже)
@@ -319,68 +328,86 @@ class A1LCMControlNode(Node):
 
     # ====== main control loop ======
 
-    def timer_callback(self):
-        now = self.get_clock().now().nanoseconds / 10**9
+        def timer_callback(self):
+            now = self.get_clock().now().nanoseconds / 10**9
 
-        # Проверяем таймаут команд FoxCommand
-        if self.last_msg_time is None:
+            raw_label = self.current_label
+
+            # По умолчанию считаем, что нет активной команды
             command_active = False
-        else:
-            command_active = (now - self.last_msg_time) <= self.action_timeout
 
-        # Логируем вход/выход из состояния "нет команд"
-        if command_active != self._last_timeout_state:
-            if not command_active:
-                self.get_logger().warn(
-                    f"No FoxCommand received for > {self.action_timeout} s. "
-                    f"Switching to stand."
-                )
+            if raw_label is None:
+                label = None
             else:
-                self.get_logger().info("FoxCommand commands active again.")
-            self._last_timeout_state = command_active
+                # Для "персистентных" команд игнорируем таймаут по FoxCommand:
+                # команда продолжает выполняться, пока не придёт другая.
+                if self._is_persistent_label(raw_label):
+                    label = raw_label
+                    command_active = True
+                else:
+                    # Для остальных (например, walking) оставляем старую
+                    # семантику: надо периодически обновлять команду.
+                    if self.last_msg_time is not None:
+                        command_active = (now - self.last_msg_time) <= self.action_timeout
+                    else:
+                        command_active = False
 
-        label = self.current_label if command_active else None
+                    label = raw_label if command_active else None
 
-        # Считаем elapsed с момента НАЧАЛА ТЕКУЩЕГО действия
-        if label is None or self.action_start_time is None:
-            elapsed = 0.0
-        else:
-            elapsed = now - self.action_start_time
+            # Логируем вход/выход из состояния "нет команд" только для
+            # НЕперсистентных команд (по сути, для walking и любых, которые ты
+            # не включил в _is_persistent_label).
+            if command_active != self._last_timeout_state and not self._is_persistent_label(raw_label or ""):
+                if not command_active:
+                    self.get_logger().warn(
+                        f"No FoxCommand received for > {self.action_timeout} s. "
+                        f"Switching to stand."
+                    )
+                else:
+                    self.get_logger()..info("FoxCommand commands active again.")
+                self._last_timeout_state = command_active
 
-        # Выбор команды
-        if label is None:
-            cmd = self._cmd_stand()
-            phase = "idle"
+            # Считаем elapsed с момента НАЧАЛА ТЕКУЩЕГО действия
+            if label is None or self.action_start_time is None:
+                elapsed = 0.0
+            else:
+                elapsed = now - self.action_start_time
 
-        elif label == "walking":
-            cmd = self._cmd_walking()
-            phase = "walking"
+            # Выбор команды
+            if label is None:
+                cmd = self._cmd_stand()
+                phase = "idle"
 
-        elif label == "salute":
-            cmd = self._cmd_salute(elapsed)
-            phase = "salute"
+            elif label == "walking":
+                cmd = self._cmd_walking()
+                phase = "walking"
 
-        elif label == "jumping":
-            cmd = self._cmd_jumping(elapsed)
-            phase = "jumping"
+            elif label == "salute":
+                cmd = self._cmd_salute(elapsed)
+                phase = "salute"
 
-        elif label == "come_closer":
-            cmd = self._cmd_come_closer(now)
-            phase = "come_closer"
+            elif label == "jumping":
+                cmd = self._cmd_jumping(elapsed)
+                phase = "jumping"
 
-        else:
-            cmd = self._cmd_stand()
-            phase = f"stand_unknown('{label}')"
+            elif label == "come_closer":
+                cmd = self._cmd_come_closer(now)
+                phase = "come_closer"
 
-        # Отправка в LCM
-        self.lcm_client.send_raw_cmd(cmd)
+            else:
+                cmd = self._cmd_stand()
+                phase = f"stand_unknown('{label}')"
 
-        # Лог раз в ~1 секунду
-        self._step += 1
-        if self._step % int(max(1, round(1.0 / self.dt))) == 0:
-            self.get_logger().info(
-                f"phase={phase}, label={label}, elapsed={elapsed:.2f}"
-            )
+            # Отправка в LCM
+            self.lcm_client.send_raw_cmd(cmd)
+
+            # Лог раз в ~1 секунду
+            self._step += 1
+            if self._step % int(max(1, round(1.0 / self.dt))) == 0:
+                self.get_logger().info(
+                    f"phase={phase}, label={label}, elapsed={elapsed:.2f}"
+                )
+
 
     # ====== motion patterns ======
 
