@@ -105,7 +105,7 @@ class A1LCMClient(object):
             self.lc = lcm.LCM(lcm_url)
 
         self._state_lock = threading.Lock()
-        self._last_state_raw = None  # type: Optional[bytes]
+        self._last_state_raw: Optional[bytes] = None
 
         self.lc.subscribe(HIGH_STATE_CHANNEL, self._state_handler)
 
@@ -138,26 +138,18 @@ class A1LCMClient(object):
 
 class A1LCMControlNode(Node):
     """
-    Управление A1 через LCM по high-level командам:
+    Управление A1 через LCM по high-level командам FoxCommand.command (нижний регистр):
 
-      FoxCommand.command (строка, в нижнем регистре):
-
-        - "walking"     : идти вперёд (mode=2, gaitType=1, vx>0)
-        - "jumping"     : 1 c вперёд, 1 c назад
-        - "salute"      : «поклон» за счёт euler_pitch (mode=1)
-        - "come_closer" / "come closer" / "come":
-            * выбираем лучшего человека по score из PersonBodyArray
-            * берём bbox с max score
-            * вычисляем отклонение центра bbox относительно центра изображения
-            * если человек сильно слева/справа -> поворачиваемся на месте
-            * если по центру -> идём вперёд, пока bbox не станет «достаточно большим»
-        - иначе или при отсутствии команд дольше action_timeout: force stand (mode=1)
+      - "salute"       : глубокий поклон (mode=1, euler_pitch)
+      - "come to me"   : идти вперёд (как walking)
+      - "come closer"  : шаг назад примерно на 0.5 м и остановка
+      - "walking"      : просто идти вперёд
+      - "jumping"      : 1 c вперёд, 1 c назад (циклично)
 
     Логика команд:
 
       - Любая команда при первом приходе запускает действие.
-      - Действие гарантированно живёт хотя бы min_action_duration секунд,
-        даже если новых FoxCommand не приходит.
+      - Действие живёт хотя бы min_action_duration секунд, даже если FoxCommand больше не приходит.
       - Новая команда всегда немедленно перебивает текущую (нет очереди).
       - После min_action_duration и при отсутствии свежих FoxCommand робот встаёт.
     """
@@ -167,23 +159,22 @@ class A1LCMControlNode(Node):
 
         # Параметры
         self.declare_parameter("timer_dt", 0.01)            # частота LCM-команд
-        self.declare_parameter("walk_vx", 0.3)              # walking speed
-        self.declare_parameter("jump_vx", 0.3)              # jumping speed
-        self.declare_parameter("wave_yaw_speed", 0.5)       # (оставим для waving при желании)
+        self.declare_parameter("walk_vx", 0.3)              # скорость вперёд
+        self.declare_parameter("jump_vx", 0.3)              # скорость вперёд/назад при jumping
+        self.declare_parameter("wave_yaw_speed", 0.5)       # пока не используем
         self.declare_parameter("command_topic", "/f_fox_command/command")
         self.declare_parameter("stand_body_height", 0.0)
         self.declare_parameter("action_timeout", 1.5)       # СЕКУНД без сообщений FoxCommand
         self.declare_parameter("min_action_duration", 2.0)  # гарантированная длительность действия, сек
 
-        # Для come_closer
+        # Для "come closer" (отступ назад на ~0.5 м)
+        self.declare_parameter("step_back_vx", 0.25)        # модуль скорости назад
+
+        # PersonBody оставим, если захочешь потом снова использовать
         self.declare_parameter("person_topic", "/person_bodies")
         self.declare_parameter("image_width", 640)
         self.declare_parameter("image_height", 384)
-        self.declare_parameter("person_timeout", 0.5)       # сколько времени считаем PersonBody актуальным
-        self.declare_parameter("come_vx", 0.25)             # скорость вперёд при come_closer
-        self.declare_parameter("come_yaw_speed", 0.5)       # скорость поворота при come_closer
-        self.declare_parameter("come_target_box_frac", 0.5) # доля высоты кадра, при которой считаем, что подошли достаточно близко
-        self.declare_parameter("come_dead_zone", 0.1)       # относительная мёртвая зона по X ([-1,1])
+        self.declare_parameter("person_timeout", 0.5)
 
         self.dt = float(self.get_parameter("timer_dt").value)
         self.walk_vx = float(self.get_parameter("walk_vx").value)
@@ -194,14 +185,12 @@ class A1LCMControlNode(Node):
         self.action_timeout = float(self.get_parameter("action_timeout").value)
         self.min_action_duration = float(self.get_parameter("min_action_duration").value)
 
+        self.step_back_vx = float(self.get_parameter("step_back_vx").value)
+
         self.person_topic = self.get_parameter("person_topic").get_parameter_value().string_value
         self.image_width = int(self.get_parameter("image_width").value)
         self.image_height = int(self.get_parameter("image_height").value)
         self.person_timeout = float(self.get_parameter("person_timeout").value)
-        self.come_vx = float(self.get_parameter("come_vx").value)
-        self.come_yaw_speed = float(self.get_parameter("come_yaw_speed").value)
-        self.come_target_box_frac = float(self.get_parameter("come_target_box_frac").value)
-        self.come_dead_zone = float(self.get_parameter("come_dead_zone").value)
 
         # LCM-клиент
         self.lcm_client = A1LCMClient()
@@ -213,7 +202,7 @@ class A1LCMControlNode(Node):
         # Время последнего ПОЛУЧЕННОГО FoxCommand
         self.last_msg_time: Optional[float] = None
 
-        # Последний человек из PersonBodyArray (для come_closer)
+        # Последний человек (пока не используем в логике, но оставлено на будущее)
         self.last_person_time: Optional[float] = None
         self.last_person_cx: Optional[float] = None
         self.last_person_cy: Optional[float] = None
@@ -228,7 +217,7 @@ class A1LCMControlNode(Node):
             10,
         )
 
-        # Подписка на PersonBodyArray
+        # Подписка на PersonBodyArray (на будущее)
         self.sub_person = self.create_subscription(
             PersonBodyArray,
             self.person_topic,
@@ -243,8 +232,7 @@ class A1LCMControlNode(Node):
             f"person_topic='{self.person_topic}', "
             f"image_size=({self.image_width}x{self.image_height}), "
             f"action_timeout={self.action_timeout}, "
-            f"min_action_duration={self.min_action_duration}, "
-            f"person_timeout={self.person_timeout}"
+            f"min_action_duration={self.min_action_duration}"
         )
 
         # Таймер управления
@@ -263,9 +251,13 @@ class A1LCMControlNode(Node):
             self.last_msg_time = now
             return
 
-        # Нормализуем некоторые алиасы
-        if new_label in ("come closer", "come"):
-            new_label = "come_closer"
+        # Нормализация алиасов:
+        # "come to me" -> как walking (идти вперёд)
+        if new_label in ("come to me", "come_to_me"):
+            new_label = "walking"
+        # "come closer" -> шаг назад на 0.5 м
+        elif new_label in ("come closer", "come_closer"):
+            new_label = "step_back"
 
         # Переинициализируем действие при смене команды
         if (self.current_label is None) or (new_label != self.current_label):
@@ -288,8 +280,8 @@ class A1LCMControlNode(Node):
 
     def person_cb(self, msg: PersonBodyArray):
         """
-        Выбираем PersonBody с максимальным score и валидным bbox,
-        сохраняем центр и высоту bbox.
+        Сейчас логика PersonBody не используется в командах,
+        но оставляем заполнение последних детектов на будущее.
         """
         now = self.get_clock().now().nanoseconds / 1e9
 
@@ -319,7 +311,7 @@ class A1LCMControlNode(Node):
     def timer_callback(self):
         now = self.get_clock().now().nanoseconds / 1e9
 
-        # Свежесть FoxCommand (только по timeout)
+        # Свежесть FoxCommand (по timeout)
         if self.last_msg_time is None:
             raw_active = False
         else:
@@ -331,19 +323,19 @@ class A1LCMControlNode(Node):
         else:
             elapsed = now - self.action_start_time
 
-        # Гарантия: как только команда стартовала, она живёт хотя бы min_action_duration
+        # Гарантия минимальной длительности действия
         if self.current_label is None or self.action_start_time is None:
             min_duration_active = False
         else:
             min_duration_active = elapsed < self.min_action_duration
 
-        # Итог: команда активна, если:
+        # Команда активна, если:
         #   - приходят свежие FoxCommand ИЛИ
-        #   - ещё не истёк минимальный срок действия
+        #   - не истёк минимальный срок действия
         command_active = raw_active or min_duration_active
         label = self.current_label if command_active else None
 
-        # Логируем переход в idle, когда полностью вышли из активности
+        # Логируем переход в idle
         if command_active != self._last_timeout_state and not command_active:
             self.get_logger().warn(
                 f"No FoxCommand and action duration > {self.min_action_duration}s. "
@@ -368,9 +360,9 @@ class A1LCMControlNode(Node):
             cmd = self._cmd_jumping(elapsed)
             phase = "jumping"
 
-        elif label == "come_closer":
-            cmd = self._cmd_come_closer(now)
-            phase = "come_closer"
+        elif label == "step_back":
+            cmd = self._cmd_step_back(elapsed)
+            phase = "step_back"
 
         else:
             cmd = self._cmd_stand()
@@ -413,14 +405,15 @@ class A1LCMControlNode(Node):
 
     def _cmd_salute(self, elapsed: float):
         """
-        «Поклон» за счёт euler_pitch.
+        Глубокий поклон за счёт euler_pitch.
         Пример: 2-секундный цикл: 1 c наклон вперёд, 1 c возврат в ноль.
         """
         cycle = 2.0
         phase = elapsed % cycle
 
+        # Сделаем наклон глубже, например -0.6 рад (~34 градуса)
         if phase < 1.0:
-            pitch = -0.3
+            pitch = -0.6
         else:
             pitch = 0.0
 
@@ -454,63 +447,30 @@ class A1LCMControlNode(Node):
             body_height=self.stand_body_height,
         )
 
-    def _cmd_come_closer(self, now: float):
+    def _cmd_step_back(self, elapsed: float):
         """
-        Логика приближения к человеку по bbox:
-
-          1) Нет свежего PersonBodyArray -> стоим.
-          2) Если человек уже «близко» (bbox_h / H >= come_target_box_frac) -> стоим.
-          3) Иначе:
-             - считаем нормализованную ошибку по X: [-1,1]
-             - если |err| > dead_zone: крутимся на месте (vx=0, yaw!=0)
-             - иначе: идём вперёд (vx>0, yaw=0)
+        "come closer": отойти назад примерно на 0.5 м и остановиться.
+        s = 0.5 м, v = step_back_vx => t = s / v.
+        Пока t не истёк — идём назад, потом встаём.
         """
-        if (
-            self.last_person_time is None
-            or (now - self.last_person_time) > self.person_timeout
-            or self.last_person_cx is None
-            or self.last_person_h is None
-        ):
-            # нет свежего детекта человека
-            return self._cmd_stand()
+        distance = 0.5
+        speed = abs(self.step_back_vx) if self.step_back_vx != 0.0 else 0.25
+        duration = distance / speed
 
-        # Проверка "близости" по высоте bbox
-        h_frac = self.last_person_h / float(self.image_height)
-        if h_frac >= self.come_target_box_frac:
-            # считаем, что уже подошли достаточно близко
-            return self._cmd_stand()
-
-        # Ошибка по X относительно центра кадра
-        cx = self.last_person_cx
-        img_cx = self.image_width / 2.0
-        # нормализуем в [-1,1]
-        err_x = (cx - img_cx) / img_cx
-
-        dead = self.come_dead_zone
-
-        if abs(err_x) > dead:
-            # Поворачиваемся на месте в сторону человека
-            yaw = self.come_yaw_speed if err_x > 0.0 else -self.come_yaw_speed
+        if elapsed < duration:
+            vx = -speed  # назад
             return pack_highcmd(
                 mode=2,
                 gait_type=1,
-                vx=0.0,
-                vy=0.0,
-                yaw_speed=yaw,
-                foot_raise_height=0.08,
-                body_height=self.stand_body_height,
-            )
-        else:
-            # Человек примерно по центру → идём вперёд
-            return pack_highcmd(
-                mode=2,
-                gait_type=1,
-                vx=self.come_vx,
+                vx=vx,
                 vy=0.0,
                 yaw_speed=0.0,
                 foot_raise_height=0.08,
                 body_height=self.stand_body_height,
             )
+        else:
+            # дистанция пройдена — стоим
+            return self._cmd_stand()
 
     # ====== shutdown ======
 
