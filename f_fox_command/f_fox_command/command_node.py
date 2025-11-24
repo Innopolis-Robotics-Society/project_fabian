@@ -29,7 +29,7 @@ class CommandNode(Node):
         # wait at least this time before increasing the counter on a prediction
         self.declare_parameter('prediction_cooldown', 0.0)
         # count so many times before sending a command
-        self.declare_parameter('prediction_successes', 2)
+        self.declare_parameter('prediction_successes', 4)
         # minimum confidence of a prediction
         self.declare_parameter('prediction_threshold', 0.5)
         # wait before publishing another command
@@ -42,7 +42,7 @@ class CommandNode(Node):
 
         self.prepared_command = None
         self.prepared_counter = 0
-        self.last_command_time = 0.
+        self.last_command_time = self.get_clock().now().nanoseconds / 1e9
         self.last_prediction_time = 0.
 
         self.sub_gesture = self.create_subscription(PersonAction, "/f_gesture_recognition/actions", self.gesture_cb, 10)
@@ -51,7 +51,7 @@ class CommandNode(Node):
         self.get_logger().info("Waiting for predictions...")
 
     def gesture_cb(self, msg: PersonAction):
-        t = self.get_clock().now().nanoseconds / 10**9
+        t = self.get_clock().now().nanoseconds / 1e9
         if t - self.last_prediction_time < self.prediction_cooldown:
             return
         self.last_prediction_time = t
