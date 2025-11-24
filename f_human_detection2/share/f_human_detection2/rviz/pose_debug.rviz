@@ -1,0 +1,62 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Selection
+    Name: Selection
+  - Class: rviz_common/Tool Properties
+    Name: Tool Properties
+    Expanded:
+      - 2D Goal Pose
+      - Publish Point
+  - Class: rviz_common/Views
+    Name: Views
+    Expanded:
+      - Current View
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Line Style:
+        Value: Lines
+      Cell Size: 1
+      Plane: XY
+      Color: 160;160;160
+      Alpha: 0.5
+      Normal Cell Count: 10
+    - Class: rviz_default_plugins/Image
+      Name: OverlayImage
+      Enabled: true
+      Image Topic: /f_human_detection2/overlay
+      Normalize Range: true
+      Min Value: 0
+      Max Value: 1
+      Median window: 5
+      Queue Size: 2
+      Transport Hint: raw
+      Unreliable: false
+    - Class: rviz_default_plugins/MarkerArray
+      Name: PoseMarkers
+      Enabled: true
+      Topic: /f_human_detection2/markers
+      Queue Size: 10
+  Enabled: true
+  Global Options:
+    Background Color: 48;48;48
+    Fixed Frame: camera
+    Frame Rate: 30
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/Measure
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 3
+      Pitch: 0.5
+      Yaw: 0.0
+      Target Frame: camera
+      Name: Orbit
+      Near Clip Distance: 0.01

@@ -1,0 +1,15 @@
+f_human_detection2:
+  ros__parameters:
+    backend: "onnxrt"
+    engine_path: "yolo11m-pose.plan"
+    onnx_path: "yolo11m-pose.onnx"
+    input_width: 640
+    input_height: 384
+    conf_thr: 0.25
+    iou_thr: 0.45
+    max_persons: 20
+    tracker_type: "byte"
+    publish_overlay: true
+    publish_markers: true
+    sync_mode: false
+    camera_frame: "camera"
